@@ -103,7 +103,7 @@ BarWidget {
     labelVisible: !root.showBadge
     hasVisualContent: true
     fontSize: root.showLabel ? Style.font.body : Style.bar.iconFont
-    fixedWidth: root.showBadge ? badgeShape.width + Style.space(12) : (root.showLabel || root.vertical ? -1 : Style.bar.iconSlot)
+    fixedWidth: root.showBadge ? badgeShape.width + Style.space(7) : (root.showLabel || root.vertical ? -1 : Style.bar.iconSlot)
     fixedHeight: root.vertical ? Style.bar.iconSlot : -1
     active: root.live
     dimmed: root.ufc ? (root.ufc.failed && !root.ufc.loaded) : false
@@ -115,20 +115,17 @@ BarWidget {
       else root.togglePanel()
     }
 
-    // Outlined fist-and-UFC badge, filled in the urgent colour while an
-    // event is live.
+    // Fist-and-UFC badge, filled in the urgent colour while an event is live.
     Rectangle {
       id: badgeShape
       readonly property color ink: root.live ? (root.bar ? root.bar.background : Color.background) : button.foreground
 
       visible: root.showBadge
       anchors.centerIn: parent
-      width: badgeRow.implicitWidth + Style.space(12)
+      width: badgeRow.implicitWidth + Style.space(10)
       height: badgeRow.implicitHeight + Style.space(4)
       radius: Math.min(Style.cornerRadius, height / 2)
       color: root.live ? button.activeColor : "transparent"
-      border.width: root.live ? 0 : 1
-      border.color: Util.alpha(button.foreground, 0.6)
 
       Row {
         id: badgeRow
