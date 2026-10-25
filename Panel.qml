@@ -33,7 +33,7 @@ Panel {
   readonly property var nextEvent: schedule.length > 0 ? schedule[0] : null
   readonly property var event: schedule.length > 0 ? schedule[Math.max(0, Math.min(index, schedule.length - 1))] : null
   readonly property bool nextLive: Model.isLive(nextEvent, now)
-  readonly property string labelStyle: Model.labelStyles.indexOf(String(setting("label", "fighters"))) >= 0 ? String(setting("label", "fighters")) : "fighters"
+  readonly property string labelStyle: Model.labelStyle(String(setting("label", "fighters")))
   readonly property int refreshMinutes: Math.max(5, parseInt(setting("refreshMinutes", 30), 10) || 30)
   readonly property string timeFormat: Model.timeFormat(String(setting("clock", "locale")), Qt.locale().timeFormat(Locale.ShortFormat))
 

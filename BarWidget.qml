@@ -12,7 +12,10 @@ BarWidget {
 
   readonly property var ufc: panelLoader.item
   readonly property string label: ufc ? ufc.label : ""
-  readonly property bool showLabel: !vertical && label !== ""
+  readonly property bool live: ufc ? ufc.nextLive : false
+  readonly property bool badge: ufc ? ufc.labelStyle === "badge" : false
+  readonly property bool showBadge: badge && !vertical
+  readonly property bool showLabel: !badge && !vertical && label !== ""
 
   // Shape contract for shell.summon/hide/toggle routing: Bar.findPanelWidget
   // requires open/close/opened on the bar-widget root.
@@ -58,9 +61,9 @@ BarWidget {
     if ("hostWidget" in target) target.hostWidget = root
   }
 
-  // A text pill marks its label as open, like the clock; the icon-only form
-  // leaves the bar to size the mark.
-  readonly property real openPanelIndicatorWidth: showLabel ? button.labelWidth : 0
+  // A text pill marks its label as open, like the clock, and the badge marks
+  // its own outline; the icon-only form leaves the bar to size the mark.
+  readonly property real openPanelIndicatorWidth: showLabel ? button.labelWidth : (showBadge ? badgeShape.width : 0)
 
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
@@ -96,11 +99,13 @@ BarWidget {
     id: button
     anchors.fill: parent
     bar: root.bar
-    text: root.showLabel ? Model.glyphs.ufc + "  " + root.label : Model.glyphs.ufc
+    text: root.showBadge ? "" : (root.showLabel ? Model.glyphs.ufc + "  " + root.label : (root.badge ? Model.glyphs.fist : Model.glyphs.ufc))
+    labelVisible: !root.showBadge
+    hasVisualContent: true
     fontSize: root.showLabel ? Style.font.body : Style.bar.iconFont
-    fixedWidth: root.showLabel ? -1 : (root.vertical ? -1 : Style.bar.iconSlot)
+    fixedWidth: root.showBadge ? badgeShape.width + Style.space(12) : (root.showLabel || root.vertical ? -1 : Style.bar.iconSlot)
     fixedHeight: root.vertical ? Style.bar.iconSlot : -1
-    active: root.ufc ? root.ufc.nextLive : false
+    active: root.live
     dimmed: root.ufc ? (root.ufc.failed && !root.ufc.loaded) : false
     tooltipText: root.ufc ? root.ufc.tooltip : ""
 
@@ -108,6 +113,50 @@ BarWidget {
       if (b === Qt.MiddleButton) root.refresh()
       else if (b === Qt.RightButton) { if (root.ufc) root.ufc.openEvent(root.ufc.nextEvent) }
       else root.togglePanel()
+    }
+
+    // Outlined fist-and-UFC badge, filled in the urgent colour while an
+    // event is live.
+    Rectangle {
+      id: badgeShape
+      readonly property color ink: root.live ? (root.bar ? root.bar.background : Color.background) : button.foreground
+
+      visible: root.showBadge
+      anchors.centerIn: parent
+      width: badgeRow.implicitWidth + Style.space(12)
+      height: badgeRow.implicitHeight + Style.space(4)
+      radius: Math.min(Style.cornerRadius, height / 2)
+      color: root.live ? button.activeColor : "transparent"
+      border.width: root.live ? 0 : 1
+      border.color: Util.alpha(button.foreground, 0.6)
+
+      Row {
+        id: badgeRow
+        anchors.centerIn: parent
+        spacing: Style.space(5)
+
+        Text {
+          textFormat: Text.PlainText
+          anchors.verticalCenter: parent.verticalCenter
+          text: Model.glyphs.fist
+          color: badgeShape.ink
+          font.family: button.fontFamily
+          font.pixelSize: Style.font.body
+          renderType: Text.NativeRendering
+        }
+
+        Text {
+          textFormat: Text.PlainText
+          anchors.verticalCenter: parent.verticalCenter
+          text: root.live ? "LIVE" : "UFC"
+          color: badgeShape.ink
+          font.family: button.fontFamily
+          font.pixelSize: Style.font.caption
+          font.bold: true
+          font.letterSpacing: 1
+          renderType: Text.NativeRendering
+        }
+      }
     }
   }
 }

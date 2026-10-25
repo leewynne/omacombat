@@ -12,6 +12,7 @@ var staleAfterMs = 18 * 60 * minuteMs
 
 var glyphs = {
   ufc: String.fromCodePoint(0xF0D8F),      // nf-md-mixed_martial_arts
+  fist: String.fromCodePoint(0xEEFD),      // nf-fa-hand_fist
   previous: String.fromCodePoint(0xF0141), // nf-md-chevron_left
   next: String.fromCodePoint(0xF0142),     // nf-md-chevron_right
   refresh: String.fromCodePoint(0xF0450),  // nf-md-refresh
@@ -21,7 +22,7 @@ var glyphs = {
   broadcast: String.fromCodePoint(0xF0502) // nf-md-television
 }
 
-var labelStyles = ["fighters", "event", "countdown", "icon"]
+var labelStyles = ["fighters", "badge"]
 var segmentNames = ["Main Card", "Prelims", "Early Prelims"]
 
 function pad2(n) {
@@ -272,12 +273,17 @@ function mainEvent(event) {
   return null
 }
 
+// 1.0 offered an "icon" style, which the badge replaced; anything else
+// unknown falls back to the fighters.
+function labelStyle(value) {
+  return value === "badge" || value === "icon" ? "badge" : "fighters"
+}
+
+// The badge draws itself in QML, so only the fighters style has text.
 function barLabel(event, nowMs, style) {
-  if (!event || style === "icon") return ""
+  if (!event || labelStyle(style) === "badge") return ""
   var when = isLive(event, nowMs) ? "LIVE" : countdown(event.mainCardMs, nowMs)
-  if (style === "countdown") return when
-  var title = style === "event" ? event.brand : fightersLabel(event)
-  return title ? title + " · " + when : when
+  return fightersLabel(event) + " · " + when
 }
 
 // The countdown pill runs to the main card, the time the event is billed for.
@@ -313,6 +319,7 @@ if (typeof module !== "undefined") {
     countdown: countdown,
     countdownLong: countdownLong,
     mainEvent: mainEvent,
+    labelStyle: labelStyle,
     barLabel: barLabel,
     statusText: statusText,
     timeFormat: timeFormat,

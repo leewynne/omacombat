@@ -158,13 +158,19 @@ test("countdowns shrink from days to minutes", () => {
   assert.equal(Model.countdownLong(NaN, now), "")
 })
 
-test("barLabel follows the configured style", () => {
+test("barLabel shows the fighters, and nothing for the badge", () => {
   const event = schedule()[0]
   assert.equal(Model.barLabel(event, now, "fighters"), "Moicano vs. Nolan · 6d")
-  assert.equal(Model.barLabel(event, now, "event"), "UFC Fight Night · 6d")
-  assert.equal(Model.barLabel(event, now, "countdown"), "6d")
-  assert.equal(Model.barLabel(event, now, "icon"), "")
+  assert.equal(Model.barLabel(event, now, "badge"), "")
   assert.equal(Model.barLabel(null, now, "fighters"), "")
+})
+
+test("labelStyle keeps 1.0's icon style working as the badge", () => {
+  assert.equal(Model.labelStyle("fighters"), "fighters")
+  assert.equal(Model.labelStyle("badge"), "badge")
+  assert.equal(Model.labelStyle("icon"), "badge")
+  assert.equal(Model.labelStyle("countdown"), "fighters")
+  assert.equal(Model.labelStyle(undefined), "fighters")
 })
 
 test("an event goes live at the first bout", () => {

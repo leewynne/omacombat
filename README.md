@@ -7,7 +7,8 @@ then step through every upcoming event with the arrows.
 
 - **Bar pill** with the headliners and a countdown to the main card
   (`Moicano vs. Nolan · 6d`), turning to `LIVE` in the urgent colour once the
-  first bout starts.
+  first bout starts. Short on bar space? Switch to the compact fist **UFC
+  badge**, which fills red and reads `LIVE` while an event is on.
 - **Fight card popup** with the date and time in your time zone, venue,
   broadcaster, and every bout split into main card, prelims and early prelims,
   with records, countries, weight classes and five-round fights marked.
@@ -53,14 +54,14 @@ omarchy-shell leewynne.next-ufc refresh
 Change these from the bar settings, or with `omarchy bar set`:
 
 ```bash
-omarchy bar set leewynne.next-ufc label countdown
+omarchy bar set leewynne.next-ufc label badge
 omarchy bar set leewynne.next-ufc clock 24h
 omarchy bar set leewynne.next-ufc refreshMinutes 60 --json
 ```
 
 | Key | Values | Default |
 |---|---|---|
-| `label` | `fighters` (`Gane vs. Hokit · 6d`), `event` (`UFC 334 · 6d`), `countdown` (`6d`), `icon` | `fighters` |
+| `label` | `fighters` (`Gane vs. Hokit · 6d`) or `badge` (fist + `UFC`, red `LIVE` during an event) | `fighters` |
 | `clock` | `locale`, `24h`, `12h` | `locale` |
 | `refreshMinutes` | 5–240 | `30` |
 
