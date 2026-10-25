@@ -13,9 +13,8 @@ BarWidget {
   readonly property var ufc: panelLoader.item
   readonly property string label: ufc ? ufc.label : ""
   readonly property bool live: ufc ? ufc.nextLive : false
-  readonly property bool badge: ufc ? ufc.labelStyle === "badge" : false
-  readonly property bool showBadge: badge && !vertical
-  readonly property bool showLabel: !badge && !vertical && label !== ""
+  // The icon style has no label, so this also covers it.
+  readonly property bool showLabel: !vertical && label !== ""
 
   // Shape contract for shell.summon/hide/toggle routing: Bar.findPanelWidget
   // requires open/close/opened on the bar-widget root.
@@ -61,9 +60,9 @@ BarWidget {
     if ("hostWidget" in target) target.hostWidget = root
   }
 
-  // The open-panel mark spans the label or badge, like the clock's; the
-  // icon-only form leaves the bar to size it.
-  readonly property real openPanelIndicatorWidth: showLabel || showBadge ? pill.width : 0
+  // The open-panel mark spans the label, like the clock's; the glove alone
+  // leaves the bar to size it.
+  readonly property real openPanelIndicatorWidth: showLabel ? pill.width : 0
 
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
@@ -104,7 +103,7 @@ BarWidget {
     text: ""
     labelVisible: false
     hasVisualContent: true
-    fixedWidth: root.vertical ? -1 : pill.width + Style.space(7)
+    fixedWidth: root.vertical ? -1 : (root.showLabel ? pill.width + Style.space(7) : Math.max(Style.bar.iconSlot, pill.width))
     fixedHeight: root.vertical ? Style.bar.iconSlot : -1
     active: root.live
     dimmed: root.ufc ? (root.ufc.failed && !root.ufc.loaded) : false
@@ -116,17 +115,17 @@ BarWidget {
       else root.togglePanel()
     }
 
-    // Glove plus the fighters, or plus "Next" as a badge. A live event
-    // turns the fighters label urgent and fills the badge with it.
+    // The glove, with the fighters beside it unless the icon style is set.
+    // A live event turns the label urgent, or fills behind a lone glove.
     Rectangle {
       id: pill
-      readonly property bool filled: root.showBadge && root.live
+      readonly property bool filled: root.live && !root.showLabel
       readonly property color ink: filled
         ? (root.bar ? root.bar.background : Color.background)
-        : (root.live && root.showLabel ? button.activeColor : button.foreground)
+        : (root.live ? button.activeColor : button.foreground)
 
       anchors.centerIn: parent
-      width: pillRow.implicitWidth + (root.vertical ? 0 : Style.space(10))
+      width: pillRow.implicitWidth + (root.vertical ? 0 : Style.space(root.showLabel ? 10 : 6))
       height: pillRow.implicitHeight + Style.space(4)
       radius: Math.min(Style.cornerRadius, height / 2)
       color: filled ? button.activeColor : "transparent"
@@ -134,7 +133,7 @@ BarWidget {
       Row {
         id: pillRow
         anchors.centerIn: parent
-        spacing: Style.space(root.showLabel ? 4 : 3)
+        spacing: Style.space(4)
 
         // Square slot, so the glove's turned box can't overlap the text.
         Item {
@@ -160,13 +159,11 @@ BarWidget {
         Text {
           textFormat: Text.PlainText
           anchors.verticalCenter: parent.verticalCenter
-          visible: root.showLabel || root.showBadge
-          text: root.showBadge ? (root.live ? "LIVE" : "Next") : root.label
+          visible: root.showLabel
+          text: root.label
           color: pill.ink
           font.family: button.fontFamily
-          font.pixelSize: root.showBadge ? Style.font.caption : Style.font.body
-          font.bold: root.showBadge
-          font.letterSpacing: root.showBadge ? 0.5 : 0
+          font.pixelSize: Style.font.body
           renderType: Text.NativeRendering
         }
       }

@@ -36,10 +36,10 @@
         "label": "Bar label",
         "options": [
           "fighters",
-          "badge"
+          "icon"
         ],
         "defaultValue": "fighters",
-        "description": "fighters: Gane vs. Hokit · 6d. badge: a compact glove reading Next, which fills with your theme's urgent colour and reads LIVE while an event is on."
+        "description": "fighters: Gane vs. Hokit · 6d. icon: the glove alone, filled with your theme's urgent colour while an event is live."
       },
       {
         "key": "clock",

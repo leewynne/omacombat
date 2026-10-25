@@ -21,7 +21,7 @@ var glyphs = {
   broadcast: String.fromCodePoint(0xF0502) // nf-md-television
 }
 
-var labelStyles = ["fighters", "badge"]
+var labelStyles = ["fighters", "icon"]
 var segmentNames = ["Main Card", "Prelims", "Early Prelims"]
 
 function pad2(n) {
@@ -272,15 +272,15 @@ function mainEvent(event) {
   return null
 }
 
-// 1.0 offered an "icon" style, which the badge replaced; anything else
-// unknown falls back to the fighters.
+// 1.1 called the icon style "badge"; anything else unknown falls back to the
+// fighters.
 function labelStyle(value) {
-  return value === "badge" || value === "icon" ? "badge" : "fighters"
+  return value === "icon" || value === "badge" ? "icon" : "fighters"
 }
 
-// The badge draws itself in QML, so only the fighters style has text.
+// The icon style is the glove alone, so only the fighters style has text.
 function barLabel(event, nowMs, style) {
-  if (!event || labelStyle(style) === "badge") return ""
+  if (!event || labelStyle(style) === "icon") return ""
   var when = isLive(event, nowMs) ? "LIVE" : countdown(event.mainCardMs, nowMs)
   return fightersLabel(event) + " · " + when
 }

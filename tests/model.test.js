@@ -158,17 +158,17 @@ test("countdowns shrink from days to minutes", () => {
   assert.equal(Model.countdownLong(NaN, now), "")
 })
 
-test("barLabel shows the fighters, and nothing for the badge", () => {
+test("barLabel shows the fighters, and nothing for the icon", () => {
   const event = schedule()[0]
   assert.equal(Model.barLabel(event, now, "fighters"), "Moicano vs. Nolan · 6d")
-  assert.equal(Model.barLabel(event, now, "badge"), "")
+  assert.equal(Model.barLabel(event, now, "icon"), "")
   assert.equal(Model.barLabel(null, now, "fighters"), "")
 })
 
-test("labelStyle keeps 1.0's icon style working as the badge", () => {
+test("labelStyle keeps 1.1's badge style working as the icon", () => {
   assert.equal(Model.labelStyle("fighters"), "fighters")
-  assert.equal(Model.labelStyle("badge"), "badge")
-  assert.equal(Model.labelStyle("icon"), "badge")
+  assert.equal(Model.labelStyle("icon"), "icon")
+  assert.equal(Model.labelStyle("badge"), "icon")
   assert.equal(Model.labelStyle("countdown"), "fighters")
   assert.equal(Model.labelStyle(undefined), "fighters")
 })
