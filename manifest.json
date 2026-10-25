@@ -1,0 +1,70 @@
+{
+  "schemaVersion": 1,
+  "id": "leewynne.next-ufc",
+  "name": "Next UFC",
+  "version": "1.0.0",
+  "author": "leewynne",
+  "license": "MIT",
+  "description": "The next UFC event in your bar, with a fight-card popup that steps through every upcoming event. Schedules, cards, records and live results from ESPN.",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Next UFC",
+    "description": "Countdown to the next UFC event, with the full fight card and arrows to browse the events after it.",
+    "category": "Info",
+    "aliases": [
+      "ufc",
+      "mma",
+      "fight",
+      "espn"
+    ],
+    "allowMultiple": false,
+    "defaultSection": "right",
+    "defaults": {
+      "label": "fighters",
+      "clock": "locale",
+      "refreshMinutes": 30
+    },
+    "schema": [
+      {
+        "key": "label",
+        "type": "enum",
+        "label": "Bar label",
+        "options": [
+          "fighters",
+          "event",
+          "countdown",
+          "icon"
+        ],
+        "defaultValue": "fighters",
+        "description": "fighters: Gane vs. Hokit · 6d. event: UFC 334 · 6d. countdown: 6d. icon: the glove alone."
+      },
+      {
+        "key": "clock",
+        "type": "enum",
+        "label": "Fight times",
+        "options": [
+          "locale",
+          "24h",
+          "12h"
+        ],
+        "defaultValue": "locale",
+        "description": "Times are always shown in your local time zone. locale follows the system's time format."
+      },
+      {
+        "key": "refreshMinutes",
+        "type": "integer",
+        "label": "Refresh interval (minutes)",
+        "min": 5,
+        "max": 240,
+        "step": 5,
+        "defaultValue": 30,
+        "description": "Polls every 2 minutes while an event is live, regardless of this setting."
+      }
+    ]
+  }
+}
