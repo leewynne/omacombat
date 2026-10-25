@@ -61,9 +61,9 @@ BarWidget {
     if ("hostWidget" in target) target.hostWidget = root
   }
 
-  // A text pill marks its label as open, like the clock, and the badge marks
-  // its own outline; the icon-only form leaves the bar to size the mark.
-  readonly property real openPanelIndicatorWidth: showLabel ? button.labelWidth : (showBadge ? badgeShape.width : 0)
+  // The open-panel mark spans the label or badge, like the clock's; the
+  // icon-only form leaves the bar to size it.
+  readonly property real openPanelIndicatorWidth: showLabel || showBadge ? pill.width : 0
 
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
@@ -99,11 +99,12 @@ BarWidget {
     id: button
     anchors.fill: parent
     bar: root.bar
-    text: root.showBadge ? "" : (root.showLabel ? Model.glyphs.ufc + "  " + root.label : (root.badge ? Model.glyphs.fist : Model.glyphs.ufc))
-    labelVisible: !root.showBadge
+    // Drawn below rather than as the button's label, so the glove can lie on
+    // its side without turning the text with it.
+    text: ""
+    labelVisible: false
     hasVisualContent: true
-    fontSize: root.showLabel ? Style.font.body : Style.bar.iconFont
-    fixedWidth: root.showBadge ? badgeShape.width + Style.space(7) : (root.showLabel || root.vertical ? -1 : Style.bar.iconSlot)
+    fixedWidth: root.vertical ? -1 : pill.width + Style.space(7)
     fixedHeight: root.vertical ? Style.bar.iconSlot : -1
     active: root.live
     dimmed: root.ufc ? (root.ufc.failed && !root.ufc.loaded) : false
@@ -115,42 +116,57 @@ BarWidget {
       else root.togglePanel()
     }
 
-    // Fist-and-UFC badge, filled in the urgent colour while an event is live.
+    // Glove plus the fighters, or plus "Next" as a badge. A live event
+    // turns the fighters label urgent and fills the badge with it.
     Rectangle {
-      id: badgeShape
-      readonly property color ink: root.live ? (root.bar ? root.bar.background : Color.background) : button.foreground
+      id: pill
+      readonly property bool filled: root.showBadge && root.live
+      readonly property color ink: filled
+        ? (root.bar ? root.bar.background : Color.background)
+        : (root.live && root.showLabel ? button.activeColor : button.foreground)
 
-      visible: root.showBadge
       anchors.centerIn: parent
-      width: badgeRow.implicitWidth + Style.space(10)
-      height: badgeRow.implicitHeight + Style.space(4)
+      width: pillRow.implicitWidth + (root.vertical ? 0 : Style.space(10))
+      height: pillRow.implicitHeight + Style.space(4)
       radius: Math.min(Style.cornerRadius, height / 2)
-      color: root.live ? button.activeColor : "transparent"
+      color: filled ? button.activeColor : "transparent"
 
       Row {
-        id: badgeRow
+        id: pillRow
         anchors.centerIn: parent
-        spacing: Style.space(5)
+        spacing: Style.space(root.showLabel ? 4 : 3)
 
-        Text {
-          textFormat: Text.PlainText
+        // Square slot, so the glove's turned box can't overlap the text.
+        Item {
           anchors.verticalCenter: parent.verticalCenter
-          text: Model.glyphs.fist
-          color: badgeShape.ink
-          font.family: button.fontFamily
-          font.pixelSize: Style.font.body
-          renderType: Text.NativeRendering
+          width: glove.implicitHeight
+          height: glove.implicitHeight
+
+          Text {
+            id: glove
+            textFormat: Text.PlainText
+            anchors.centerIn: parent
+            text: Model.glyphs.glove
+            rotation: 90
+            color: pill.ink
+            font.family: button.fontFamily
+            // On its side the glove is short and wide, so it needs a larger
+            // size than other bar icons to read at the same weight.
+            font.pixelSize: Math.round(Style.bar.iconFont * 1.35)
+            renderType: Text.NativeRendering
+          }
         }
 
         Text {
           textFormat: Text.PlainText
           anchors.verticalCenter: parent.verticalCenter
-          text: root.live ? "LIVE" : "UFC"
-          color: badgeShape.ink
+          visible: root.showLabel || root.showBadge
+          text: root.showBadge ? (root.live ? "LIVE" : "Next") : root.label
+          color: pill.ink
           font.family: button.fontFamily
-          font.pixelSize: Style.font.caption
-          font.bold: true
-          font.letterSpacing: 1
+          font.pixelSize: root.showBadge ? Style.font.caption : Style.font.body
+          font.bold: root.showBadge
+          font.letterSpacing: root.showBadge ? 0.5 : 0
           renderType: Text.NativeRendering
         }
       }

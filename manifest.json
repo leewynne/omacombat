@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "leewynne.next-ufc",
   "name": "Next UFC",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "author": "leewynne",
   "license": "MIT",
   "description": "The next UFC event in your bar, with a fight-card popup that steps through every upcoming event. Schedules, cards, records and live results from ESPN.",
@@ -39,7 +39,7 @@
           "badge"
         ],
         "defaultValue": "fighters",
-        "description": "fighters: Gane vs. Hokit · 6d. badge: a compact fist UFC badge that turns red while an event is live."
+        "description": "fighters: Gane vs. Hokit · 6d. badge: a compact glove reading Next, which fills with your theme's urgent colour and reads LIVE while an event is on."
       },
       {
         "key": "clock",

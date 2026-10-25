@@ -11,8 +11,7 @@ var dayMs = 24 * 60 * minuteMs
 var staleAfterMs = 18 * 60 * minuteMs
 
 var glyphs = {
-  ufc: String.fromCodePoint(0xF0D8F),      // nf-md-mixed_martial_arts
-  fist: String.fromCodePoint(0xEEFD),      // nf-fa-hand_fist
+  glove: String.fromCodePoint(0xF0D8F),    // nf-md-mixed_martial_arts
   previous: String.fromCodePoint(0xF0141), // nf-md-chevron_left
   next: String.fromCodePoint(0xF0142),     // nf-md-chevron_right
   refresh: String.fromCodePoint(0xF0450),  // nf-md-refresh
