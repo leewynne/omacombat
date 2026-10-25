@@ -73,8 +73,10 @@ Schedules, cards and results come from ESPN's public UFC scoreboard
 or API key is needed.
 
 ESPN's feed is undocumented and could change; if the card stops loading,
-please open an issue. This plugin is a fan project and is not affiliated with
-or endorsed by the UFC or ESPN.
+please open an issue.
+
+UFC is a registered trademark of Zuffa, LLC. This plugin is a fan project and
+is not affiliated with, endorsed or sponsored by the UFC, Zuffa, TKO or ESPN.
 
 ## Remove
 
