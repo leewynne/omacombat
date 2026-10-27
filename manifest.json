@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
-  "id": "leewynne.next-ufc",
-  "name": "Next UFC",
-  "version": "1.2.0",
+  "id": "leewynne.omacombat",
+  "name": "OmaCombat",
+  "version": "2.0.0",
   "author": "leewynne",
   "license": "MIT",
-  "description": "The next UFC event in your bar, with a fight-card popup that steps through every upcoming event. Schedules, cards, records and live results from ESPN.",
+  "description": "Upcoming UFC and MMA fight cards in your bar, with the big boxing fights a click away: a countdown to the next UFC event and a popup that steps through every card, with records and live results from ESPN. Formerly Next UFC.",
   "kinds": [
     "bar-widget"
   ],
@@ -13,12 +13,13 @@
     "barWidget": "BarWidget.qml"
   },
   "barWidget": {
-    "displayName": "Next UFC",
-    "description": "Countdown to the next UFC event, with the full fight card and arrows to browse the events after it.",
+    "displayName": "OmaCombat",
+    "description": "Countdown to the next UFC event, with the full fight card, arrows to browse the events after it, and a switch to the big boxing fights coming up.",
     "category": "Info",
     "aliases": [
       "ufc",
       "mma",
+      "boxing",
       "fight",
       "espn"
     ],
@@ -27,7 +28,8 @@
     "defaults": {
       "label": "fighters",
       "clock": "locale",
-      "refreshMinutes": 30
+      "refreshMinutes": 30,
+      "boxing": "big"
     },
     "schema": [
       {
@@ -52,6 +54,19 @@
         ],
         "defaultValue": "locale",
         "description": "Times are always shown in your local time zone. locale follows the system's time format."
+      },
+      {
+        "key": "boxing",
+        "type": "enum",
+        "label": "Boxing",
+        "options": [
+          "big",
+          "titles",
+          "all",
+          "off"
+        ],
+        "defaultValue": "big",
+        "description": "Which boxing cards the panel's Boxing tab lists. big: ESPN's key dates. titles: every card with a world title fight. all: ESPN's full schedule. off: hide the tab."
       },
       {
         "key": "refreshMinutes",

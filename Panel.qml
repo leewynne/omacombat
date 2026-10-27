@@ -5,12 +5,13 @@ import qs.Commons
 import qs.Ui
 import "Model.js" as Model
 
-// Fetches the UFC schedule from ESPN and shows one event's fight card at a
-// time. The arrows (or h/l) step through upcoming events; Return opens the
-// event on ESPN.
+// Fetches the UFC and boxing schedules from ESPN and shows one fight card at
+// a time. UFC is the default; the switch at the top (or u/b) changes sport.
+// The arrows (or h/l) step through upcoming events; Return opens the event on
+// ESPN.
 Panel {
   id: root
-  moduleName: "leewynne.next-ufc"
+  moduleName: "leewynne.omacombat"
   manageIpc: false
 
   property var anchorItem: null
@@ -28,6 +29,15 @@ Panel {
   property real now: Date.now()
   property int index: 0
   property int retries: 0
+  property string sport: "ufc"
+
+  // Boxing keeps its own last good schedule, kept the same way.
+  property var boxingAll: []
+  property bool boxingLoaded: false
+  property bool boxingFailed: false
+  property real boxingFetchedAt: 0
+  property int boxingIndex: 0
+  property int boxingRetries: 0
 
   readonly property var schedule: Model.upcoming(events, now)
   readonly property var nextEvent: schedule.length > 0 ? schedule[0] : null
@@ -37,10 +47,27 @@ Panel {
   readonly property int refreshMinutes: Math.max(5, parseInt(setting("refreshMinutes", 30), 10) || 30)
   readonly property string timeFormat: Model.timeFormat(String(setting("clock", "locale")), Qt.locale().timeFormat(Locale.ShortFormat))
 
+  readonly property string boxingScope: Model.boxingScope(String(setting("boxing", "big")))
+  readonly property bool boxingEnabled: boxingScope !== "off"
+  readonly property var boxingSchedule: Model.boxingCards(boxingAll, boxingScope, now)
+  readonly property var card: boxingSchedule.length > 0 ? boxingSchedule[Math.max(0, Math.min(boxingIndex, boxingSchedule.length - 1))] : null
+
+  // What the panel is showing: the UFC event or the boxing card.
+  readonly property bool onBoxing: sport === "boxing" && boxingEnabled
+  readonly property var current: onBoxing ? card : event
+  readonly property var currentList: onBoxing ? boxingSchedule : schedule
+  readonly property int currentIndex: onBoxing ? Math.min(boxingIndex, boxingSchedule.length - 1) : Math.min(index, schedule.length - 1)
+  readonly property bool currentLive: onBoxing ? (card !== null && Model.daysUntil(card, now) <= 0) : Model.isLive(event, now)
+  readonly property bool currentFailed: onBoxing ? boxingFailed : failed
+  readonly property bool currentLoaded: onBoxing ? boxingLoaded : loaded
+  readonly property real currentFetchedAt: onBoxing ? boxingFetchedAt : fetchedAt
+
   readonly property string label: Model.barLabel(nextEvent, now, labelStyle)
-  readonly property string tooltip: nextEvent
+  readonly property var nextBoxing: boxingSchedule.length > 0 ? boxingSchedule[0] : null
+  readonly property string tooltip: (nextEvent
     ? nextEvent.name + "\n" + formatDay(nextEvent.mainCardMs) + " · " + formatTime(nextEvent.mainCardMs)
-    : (failed ? "Couldn't reach ESPN" : "Next UFC")
+    : (failed ? "Couldn't reach ESPN" : "OmaCombat"))
+    + (nextBoxing ? "\n\nBoxing: " + nextBoxing.headline + "\n" + formatDay(Model.cardDate(nextBoxing).getTime()) : "")
 
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
   readonly property color dim: Qt.darker(barForeground, 1.4)
@@ -48,10 +75,26 @@ Panel {
 
   function open() {
     index = 0
+    boxingIndex = 0
+    sport = "ufc"
     now = Date.now()
     cardScroll.contentY = 0
     root.controller.show()
-    if (Date.now() - fetchedAt > 5 * 60 * 1000) refresh()
+    if (Date.now() - fetchedAt > 5 * 60 * 1000) refreshUfc()
+    if (Date.now() - boxingFetchedAt > 30 * 60 * 1000) refreshBoxing()
+  }
+
+  function openSport(name) {
+    if (!root.opened) open()
+    showSport(name)
+  }
+
+  function showSport(name) {
+    var next = Model.sport(name)
+    if (next === "boxing" && !boxingEnabled) return
+    if (next === sport) return
+    sport = next
+    cardScroll.contentY = 0
   }
 
   function close() {
@@ -70,8 +113,10 @@ Panel {
   }
 
   function step(delta) {
-    if (schedule.length === 0) return
-    index = Math.max(0, Math.min(schedule.length - 1, index + delta))
+    if (currentList.length === 0) return
+    var next = Math.max(0, Math.min(currentList.length - 1, currentIndex + delta))
+    if (onBoxing) boxingIndex = next
+    else index = next
     cardScroll.contentY = 0
   }
 
@@ -81,15 +126,25 @@ Panel {
   }
 
   function openEvent(target) {
-    var ev = target || root.event
+    var ev = target || root.current
     if (!ev) return
     Quickshell.execDetached(["omarchy-launch-browser", ev.url])
     root.close()
   }
 
   function refresh() {
+    refreshUfc()
+    refreshBoxing()
+  }
+
+  function refreshUfc() {
     retries = 0
     fetch()
+  }
+
+  function refreshBoxing() {
+    boxingRetries = 0
+    fetchBoxing()
   }
 
   function fetch() {
@@ -98,14 +153,32 @@ Panel {
     fetchProc.running = true
   }
 
+  function fetchBoxing() {
+    if (!boxingEnabled || boxingProc.running) return
+    boxingProc.command = ["curl", "-fsS", "--compressed", "--max-time", "15", Model.boxingStoryUrl]
+    boxingProc.running = true
+  }
+
   function scheduleRetry() {
     if (retries >= 3) return
     retries++
     retryTimer.restart()
   }
 
+  function scheduleBoxingRetry() {
+    if (boxingRetries >= 3) return
+    boxingRetries++
+    boxingRetryTimer.restart()
+  }
+
   function formatDay(ms) {
     return isNaN(ms) ? "" : Qt.formatDate(new Date(ms), "ddd d MMM")
+  }
+
+  function boxingEmptyText() {
+    if (boxingScope === "big") return "No big fights on ESPN's boxing schedule right now."
+    if (boxingScope === "titles") return "No title fights on ESPN's boxing schedule right now."
+    return "ESPN's boxing schedule is empty right now."
   }
 
   function formatTime(ms) {
@@ -138,6 +211,27 @@ Panel {
     }
   }
 
+  Process {
+    id: boxingProc
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        var parsed = Model.parseBoxingSchedule(String(text || ""), Date.now())
+        if (parsed === null) {
+          root.boxingFailed = true
+          root.scheduleBoxingRetry()
+          return
+        }
+        root.boxingAll = parsed
+        root.boxingLoaded = true
+        root.boxingFailed = false
+        root.boxingRetries = 0
+        root.boxingFetchedAt = Date.now()
+        root.now = Date.now()
+      }
+    }
+  }
+
   // ESPN occasionally drops a request; a few quick retries beat waiting out
   // the refresh interval with no schedule.
   Timer {
@@ -146,13 +240,28 @@ Panel {
     onTriggered: root.fetch()
   }
 
+  Timer {
+    id: boxingRetryTimer
+    interval: 5000
+    onTriggered: root.fetchBoxing()
+  }
+
   // Poll faster while an event is live so results land on the card.
   Timer {
     interval: (root.nextLive ? 2 : root.refreshMinutes) * 60 * 1000
     running: true
     repeat: true
     triggeredOnStart: true
-    onTriggered: root.refresh()
+    onTriggered: root.refreshUfc()
+  }
+
+  // The boxing story carries no results, so it never needs the live pace.
+  Timer {
+    interval: root.refreshMinutes * 60 * 1000
+    running: root.boxingEnabled
+    repeat: true
+    triggeredOnStart: true
+    onTriggered: root.refreshBoxing()
   }
 
   Timer {
@@ -280,6 +389,87 @@ Panel {
     }
   }
 
+  // A boxing bout: the story has names, rounds and either the title at stake
+  // or the weight class, which runs underneath because it can be long.
+  component BoutRow: Column {
+    id: bout
+    required property var modelData
+    readonly property real middleWidth: Style.space(104)
+
+    width: parent ? parent.width : 0
+    topPadding: Style.space(5)
+    bottomPadding: Style.space(5)
+    spacing: Style.space(2)
+
+    Item {
+      width: parent.width
+      height: Math.max(boutRed.implicitHeight, boutMiddle.implicitHeight)
+
+      Corner {
+        id: boutRed
+        anchors.left: parent.left
+        anchors.verticalCenter: parent.verticalCenter
+        width: (parent.width - bout.middleWidth) / 2
+        fighter: bout.modelData.red
+        alignRight: false
+        decided: false
+        emphasized: bout.modelData.mainEvent
+      }
+
+      Column {
+        id: boutMiddle
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.verticalCenter: parent.verticalCenter
+        width: bout.middleWidth
+        spacing: Style.space(1)
+
+        Text {
+          textFormat: Text.PlainText
+          width: parent.width
+          horizontalAlignment: Text.AlignHCenter
+          text: "vs"
+          color: root.dim
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.bodySmall
+        }
+
+        Text {
+          textFormat: Text.PlainText
+          width: parent.width
+          horizontalAlignment: Text.AlignHCenter
+          visible: text !== ""
+          text: Model.boutRounds(bout.modelData)
+          color: bout.modelData.titleFight ? Color.accent : root.dim
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.caption
+          font.letterSpacing: 0.5
+        }
+      }
+
+      Corner {
+        anchors.right: parent.right
+        anchors.verticalCenter: parent.verticalCenter
+        width: (parent.width - bout.middleWidth) / 2
+        fighter: bout.modelData.blue
+        alignRight: true
+        decided: false
+        emphasized: bout.modelData.mainEvent
+      }
+    }
+
+    Text {
+      textFormat: Text.PlainText
+      width: parent.width
+      horizontalAlignment: Text.AlignHCenter
+      wrapMode: Text.WordWrap
+      visible: text !== ""
+      text: Model.boutNote(bout.modelData)
+      color: bout.modelData.belt !== "" ? Color.accent : root.dim
+      font.family: root.fontFamily
+      font.pixelSize: Style.font.caption
+    }
+  }
+
   KeyboardPanel {
     id: panel
     anchorItem: root.anchorItem
@@ -301,7 +491,11 @@ Panel {
         else root.scroll(dy)
       }
       onActivateRequested: root.openEvent()
-      onTextKey: function(t) { if (t === "r") root.refresh() }
+      onTextKey: function(t) {
+        if (t === "r") root.refresh()
+        else if (t === "u") root.showSport("ufc")
+        else if (t === "b") root.showSport("boxing")
+      }
 
       Column {
         id: header
@@ -309,6 +503,21 @@ Panel {
         anchors.left: parent.left
         anchors.right: parent.right
         spacing: Style.space(10)
+
+        ButtonGroup {
+          anchors.horizontalCenter: parent.horizontalCenter
+          visible: root.boxingEnabled
+          focusable: false
+          options: [
+            { value: "ufc", label: "UFC", tooltip: "UFC (u)" },
+            { value: "boxing", label: "Boxing", tooltip: "Boxing (b)" }
+          ]
+          value: root.onBoxing ? "boxing" : "ufc"
+          foreground: root.barForeground
+          fontFamily: root.fontFamily
+          fontSize: Style.font.bodySmall
+          onChanged: function(v) { root.showSport(v) }
+        }
 
         Item {
           width: parent.width
@@ -322,7 +531,7 @@ Panel {
             tooltipText: "Previous event (h)"
             foreground: root.barForeground
             fontFamily: root.fontFamily
-            enabled: root.index > 0
+            enabled: root.currentIndex > 0
             onClicked: root.step(-1)
           }
 
@@ -340,9 +549,8 @@ Panel {
               width: parent.width
               horizontalAlignment: Text.AlignHCenter
               elide: Text.ElideRight
-              text: root.event
-                ? root.event.brand.toUpperCase() + "  ·  " + (root.index + 1) + " / " + root.schedule.length
-                : "NEXT UFC"
+              text: (root.onBoxing ? "BOXING" : (root.event ? root.event.brand.toUpperCase() : "UFC"))
+                + (root.current ? "  ·  " + (root.currentIndex + 1) + " / " + root.currentList.length : "")
               color: root.dim
               font.family: root.fontFamily
               font.pixelSize: Style.font.caption
@@ -355,7 +563,9 @@ Panel {
               width: parent.width
               horizontalAlignment: Text.AlignHCenter
               elide: Text.ElideRight
-              text: root.event ? (root.event.headline || root.event.name) : (root.failed ? "Couldn't reach ESPN" : (root.loaded ? "No events scheduled" : "Loading schedule…"))
+              text: root.current
+                ? (root.current.headline || root.current.name)
+                : (root.currentFailed ? "Couldn't reach ESPN" : (root.currentLoaded ? "No events scheduled" : "Loading schedule…"))
               color: root.barForeground
               font.family: root.fontFamily
               font.pixelSize: Style.font.heading
@@ -371,45 +581,51 @@ Panel {
             tooltipText: "Next event (l)"
             foreground: root.barForeground
             fontFamily: root.fontFamily
-            enabled: root.index < root.schedule.length - 1
+            enabled: root.currentIndex < root.currentList.length - 1
             onClicked: root.step(1)
           }
         }
 
+        // Boxing cards have a date but no start time.
         Column {
           width: parent.width
           spacing: Style.space(3)
-          visible: root.event !== null
+          visible: root.current !== null
 
           InfoLine {
-            text: root.event ? Model.glyphs.date + "  " + root.formatDay(root.event.mainCardMs) + " · " + root.formatTime(root.event.mainCardMs) : ""
+            text: !root.current ? ""
+              : Model.glyphs.date + "  " + (root.onBoxing
+                ? Qt.formatDate(Model.cardDate(root.current), "ddd d MMM")
+                : root.formatDay(root.current.mainCardMs) + " · " + root.formatTime(root.current.mainCardMs))
             color: root.barForeground
           }
 
           InfoLine {
-            text: root.event ? [root.event.venue, root.event.location].filter(function(p) { return p !== "" }).join(" · ") : ""
+            text: !root.current ? ""
+              : (root.onBoxing ? root.current.location
+                : [root.current.venue, root.current.location].filter(function(p) { return p !== "" }).join(" · "))
           }
 
           InfoLine {
-            text: root.event && root.event.broadcasts.length > 0 ? Model.glyphs.broadcast + "  " + root.event.broadcasts.join(", ") : ""
+            text: root.current && root.current.broadcasts.length > 0 ? Model.glyphs.broadcast + "  " + root.current.broadcasts.join(", ") : ""
           }
         }
 
         BorderSurface {
           anchors.horizontalCenter: parent.horizontalCenter
-          visible: root.event !== null
+          visible: root.current !== null
           implicitWidth: statusLabel.implicitWidth + Style.space(16)
           implicitHeight: statusLabel.implicitHeight + Style.space(6)
           radius: Style.cornerRadius
-          color: Model.isLive(root.event, root.now) ? Util.alpha(root.live, 0.18) : "transparent"
-          borderSpec: Border.controlSpec("normal", Model.isLive(root.event, root.now) ? root.live : root.barForeground, Color.accent)
+          color: root.currentLive ? Util.alpha(root.live, 0.18) : "transparent"
+          borderSpec: Border.controlSpec("normal", root.currentLive ? root.live : root.barForeground, Color.accent)
 
           Text {
             id: statusLabel
             textFormat: Text.PlainText
             anchors.centerIn: parent
-            text: Model.statusText(root.event, root.now).toUpperCase()
-            color: Model.isLive(root.event, root.now) ? root.live : root.barForeground
+            text: (root.onBoxing ? Model.boxingStatus(root.card, root.now) : Model.statusText(root.event, root.now)).toUpperCase()
+            color: root.currentLive ? root.live : root.barForeground
             font.family: root.fontFamily
             font.pixelSize: Style.font.bodySmall
             font.letterSpacing: 1
@@ -449,16 +665,38 @@ Panel {
             horizontalAlignment: Text.AlignHCenter
             wrapMode: Text.WordWrap
             visible: text !== ""
-            text: !root.event
-              ? (root.failed ? "ESPN didn't answer. Press r to try again." : (root.loaded ? "ESPN has no upcoming UFC events listed." : ""))
-              : (root.event.fightCount === 0 ? "The fight card hasn't been announced yet." : "")
+            text: root.onBoxing
+              ? (root.card ? "" : (root.boxingFailed ? "ESPN's boxing schedule didn't load. Press r to try again." : (root.boxingLoaded ? root.boxingEmptyText() : "")))
+              : (!root.event
+                ? (root.failed ? "ESPN didn't answer. Press r to try again." : (root.loaded ? "ESPN has no upcoming UFC events listed." : ""))
+                : (root.event.fightCount === 0 ? "The fight card hasn't been announced yet." : ""))
             color: root.dim
             font.family: root.fontFamily
             font.pixelSize: Style.font.body
           }
 
+          Column {
+            width: cardColumn.width
+            spacing: 0
+            visible: root.onBoxing && root.card !== null
+
+            PanelSectionHeader {
+              width: parent.width
+              text: "FIGHT CARD"
+              foreground: root.barForeground
+              fontFamily: root.fontFamily
+              bottomPadding: Style.space(2)
+            }
+
+            Repeater {
+              model: root.onBoxing && root.card ? root.card.fights : []
+
+              BoutRow {}
+            }
+          }
+
           Repeater {
-            model: root.event ? root.event.segments : []
+            model: !root.onBoxing && root.event ? root.event.segments : []
 
             Column {
               id: segmentColumn
@@ -500,8 +738,8 @@ Panel {
           anchors.rightMargin: Style.space(8)
           anchors.verticalCenter: parent.verticalCenter
           elide: Text.ElideRight
-          text: root.fetchedAt > 0
-            ? (root.failed ? "Offline · " : "") + "ESPN · updated " + root.formatTime(root.fetchedAt)
+          text: root.currentFetchedAt > 0
+            ? (root.currentFailed ? "Offline · " : "") + "ESPN · updated " + root.formatTime(root.currentFetchedAt)
             : "ESPN"
           color: root.dim
           font.family: root.fontFamily
@@ -519,7 +757,7 @@ Panel {
             tooltipText: "Refresh (r)"
             foreground: root.barForeground
             fontFamily: root.fontFamily
-            enabled: !fetchProc.running
+            enabled: !fetchProc.running && !boxingProc.running
             onClicked: root.refresh()
           }
 
@@ -528,7 +766,7 @@ Panel {
             tooltipText: "Open on ESPN (Enter)"
             foreground: root.barForeground
             fontFamily: root.fontFamily
-            enabled: root.event !== null
+            enabled: root.current !== null
             onClicked: root.openEvent()
           }
         }

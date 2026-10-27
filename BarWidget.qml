@@ -4,51 +4,56 @@ import qs.Commons
 import qs.Ui
 import "Model.js" as Model
 
-// Next UFC event in the bar. Left click opens the fight card, middle click
-// refreshes, right click opens the next event on ESPN.
+// Next UFC event in the bar. Left click opens the fight card (with boxing a
+// switch away), middle click refreshes, right click opens the next UFC event
+// on ESPN.
 BarWidget {
   id: root
-  moduleName: "leewynne.next-ufc"
+  moduleName: "leewynne.omacombat"
 
-  readonly property var ufc: panelLoader.item
-  readonly property string label: ufc ? ufc.label : ""
-  readonly property bool live: ufc ? ufc.nextLive : false
+  readonly property var fights: panelLoader.item
+  readonly property string label: fights ? fights.label : ""
+  readonly property bool live: fights ? fights.nextLive : false
   // The icon style has no label, so this also covers it.
   readonly property bool showLabel: !vertical && label !== ""
 
   // Shape contract for shell.summon/hide/toggle routing: Bar.findPanelWidget
   // requires open/close/opened on the bar-widget root.
-  readonly property bool opened: ufc ? ufc.opened === true : false
+  readonly property bool opened: fights ? fights.opened === true : false
 
   function open() {
-    if (ufc) ufc.open()
+    if (fights) fights.open()
   }
 
   function close() {
-    if (ufc) ufc.close()
+    if (fights) fights.close()
   }
 
   function togglePanel() {
-    if (ufc) ufc.toggle()
+    if (fights) fights.toggle()
   }
 
   function refresh() {
-    if (ufc) ufc.refresh()
+    if (fights) fights.refresh()
   }
 
   function step(delta) {
-    if (!ufc) return
-    if (!ufc.opened) ufc.open()
-    ufc.step(delta)
+    if (!fights) return
+    if (!fights.opened) fights.open()
+    fights.step(delta)
+  }
+
+  function openSport(name) {
+    if (fights) fights.openSport(name)
   }
 
   // Forwarded so this widget can stand in for the panel as the bar's popout
   // identity: Bar.requestPopout prefers closeForPopoutSwitch over close, and
   // KeyboardPanel reads popoutSwitchClosing back off its owner.
-  readonly property bool popoutSwitchClosing: ufc ? ufc.popoutSwitchClosing === true : false
+  readonly property bool popoutSwitchClosing: fights ? fights.popoutSwitchClosing === true : false
 
   function closeForPopoutSwitch() {
-    if (ufc) ufc.closeForPopoutSwitch()
+    if (fights) fights.closeForPopoutSwitch()
   }
 
   function injectPanel() {
@@ -82,7 +87,7 @@ BarWidget {
   }
 
   IpcHandler {
-    target: "leewynne.next-ufc"
+    target: "leewynne.omacombat"
 
     function refresh(): void { root.broadcast("refresh") }
     function open(): void { root.open() }
@@ -92,6 +97,8 @@ BarWidget {
     function toggle(): void { root.togglePanel() }
     function next(): void { root.step(1) }
     function previous(): void { root.step(-1) }
+    function ufc(): void { root.openSport("ufc") }
+    function boxing(): void { root.openSport("boxing") }
   }
 
   WidgetButton {
@@ -106,12 +113,12 @@ BarWidget {
     fixedWidth: root.vertical ? -1 : (root.showLabel ? pill.width + Style.space(7) : Math.max(Style.bar.iconSlot, pill.width))
     fixedHeight: root.vertical ? Style.bar.iconSlot : -1
     active: root.live
-    dimmed: root.ufc ? (root.ufc.failed && !root.ufc.loaded) : false
-    tooltipText: root.ufc ? root.ufc.tooltip : ""
+    dimmed: root.fights ? (root.fights.failed && !root.fights.loaded) : false
+    tooltipText: root.fights ? root.fights.tooltip : ""
 
     onPressed: function(b) {
       if (b === Qt.MiddleButton) root.refresh()
-      else if (b === Qt.RightButton) { if (root.ufc) root.ufc.openEvent(root.ufc.nextEvent) }
+      else if (b === Qt.RightButton) { if (root.fights) root.fights.openEvent(root.fights.nextEvent) }
       else root.togglePanel()
     }
 

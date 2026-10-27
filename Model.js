@@ -1,8 +1,13 @@
-// ESPN's public UFC scoreboard, shaped into what the bar pill and the
-// fight-card panel need. Pure functions only: the QML owns fetching and
-// timers, so everything here runs under node for the tests.
+// ESPN's public UFC scoreboard and boxing schedule, shaped into what the bar
+// pill and the fight-card panel need. Pure functions only: the QML owns
+// fetching and timers, so everything here runs under node for the tests.
 
 var scoreboardBase = "https://site.api.espn.com/apis/site/v2/sports/mma/ufc/scoreboard"
+
+// ESPN has no boxing scoreboard. Its long-running "Boxing schedule" story is
+// the source instead, read through the news API so it arrives as JSON.
+var boxingStoryUrl = "https://now.core.api.espn.com/v1/sports/news/12508267"
+var boxingPageUrl = "https://www.espn.com/boxing/story/_/id/12508267/boxing-schedule"
 var minuteMs = 60 * 1000
 var dayMs = 24 * 60 * minuteMs
 
@@ -12,6 +17,7 @@ var staleAfterMs = 18 * 60 * minuteMs
 
 var glyphs = {
   glove: String.fromCodePoint(0xF0D8F),    // nf-md-mixed_martial_arts
+  boxing: String.fromCodePoint(0xF0B65),   // nf-md-boxing_glove
   previous: String.fromCodePoint(0xF0141), // nf-md-chevron_left
   next: String.fromCodePoint(0xF0142),     // nf-md-chevron_right
   refresh: String.fromCodePoint(0xF0450),  // nf-md-refresh
@@ -304,6 +310,294 @@ function cornerDetail(f) {
   return [f.record, f.country].filter(function(p) { return !!p }).join(" · ")
 }
 
+// ---------- boxing ----------
+
+var sports = ["ufc", "boxing"]
+var boxingScopes = ["big", "titles", "all", "off"]
+var monthIndex = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 }
+var monthAnchors = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"]
+
+// A card stays listed until midday UTC the day after its date, which covers
+// evening shows in the Americas for viewers ahead of them.
+var boxingStaleAfterMs = 36 * 60 * minuteMs
+
+var entities = {
+  amp: "&", quot: "\"", apos: "'", lt: "<", gt: ">", nbsp: " ",
+  lsquo: "‘", rsquo: "’", ldquo: "“", rdquo: "”",
+  ndash: "–", mdash: "—"
+}
+
+function decodeEntities(text) {
+  return String(text || "").replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, function(all, name) {
+    if (name.charAt(0) === "#") {
+      var hex = name.charAt(1) === "x" || name.charAt(1) === "X"
+      var code = parseInt(name.slice(hex ? 2 : 1), hex ? 16 : 10)
+      return code > 0 && code <= 0x10FFFF ? String.fromCodePoint(code) : all
+    }
+    var key = name.toLowerCase()
+    return entities.hasOwnProperty(key) ? entities[key] : all
+  })
+}
+
+function plainText(html) {
+  return decodeEntities(String(html || "").replace(/<[^>]*>/g, " ")).replace(/\s+/g, " ").trim()
+}
+
+function sport(value) {
+  return value === "boxing" ? "boxing" : "ufc"
+}
+
+function boxingScope(value) {
+  return boxingScopes.indexOf(value) >= 0 ? value : "big"
+}
+
+// The story gives "Oct. 31" with no year. The year is whichever puts the date
+// nearest the story's publication, so January follows December.
+function nearestDate(month, day, referenceMs) {
+  var year = new Date(referenceMs).getUTCFullYear()
+  var best = NaN
+  for (var y = year - 1; y <= year + 1; y++) {
+    var ms = Date.UTC(y, month, day)
+    if (new Date(ms).getUTCDate() !== day) return NaN
+    if (isNaN(best) || Math.abs(ms - referenceMs) < Math.abs(best - referenceMs)) best = ms
+  }
+  return best
+}
+
+// "Oct. 31: Riyadh, Saudi Arabia (DAZN PPV)" -> the date, place and channel.
+function parseCardHeading(text, referenceMs) {
+  var m = /^([A-Za-z]+)\.?\s+(\d{1,2})(?:\s*[-–]\s*\d{1,2})?\s*:\s*(.+)$/.exec(plainText(text))
+  if (!m) return null
+  var month = monthIndex[m[1].slice(0, 3).toLowerCase()]
+  if (month === undefined) return null
+  var dayMs = nearestDate(month, parseInt(m[2], 10), referenceMs)
+  if (isNaN(dayMs)) return null
+
+  var place = m[3].trim()
+  var broadcast = ""
+  var channel = /\(([^()]*)\)\s*$/.exec(place)
+  if (channel) {
+    broadcast = channel[1].trim()
+    place = place.slice(0, channel.index).trim()
+  }
+  return { dayMs: dayMs, location: place, broadcasts: broadcast ? [broadcast] : [] }
+}
+
+function boxer(name) {
+  var text = String(name || "").trim()
+  if (!text || /^tba$/i.test(text)) return { name: "TBA", lastName: "TBA", record: "", country: "", winner: false }
+  var parts = text.split(/\s+/)
+  var last = parts[parts.length - 1]
+  if (parts.length > 2 && /^(jr|sr|ii|iii|iv)\.?$/i.test(last)) last = parts[parts.length - 2] + " " + last
+  return { name: text, lastName: last, record: "", country: "", winner: false }
+}
+
+function capitalize(text) {
+  return text.charAt(0).toUpperCase() + text.slice(1)
+}
+
+// "Title fight: Canelo Alvarez vs. Christian Mbilli, 12 rounds, for Mbilli's
+// WBC super middleweight title". The story is typed by hand, so "12 rouns"
+// and "8. rounds" turn up and the parse stays loose.
+function parseBout(html, index) {
+  var text = plainText(html)
+  var titleFight = false
+  text = text.replace(/^title fight\s*:\s*/i, function() {
+    titleFight = true
+    return ""
+  })
+  var vs = /\s+vs\.?\s+/i.exec(text)
+  if (!vs) return null
+
+  var after = text.slice(vs.index + vs[0].length)
+  var comma = after.indexOf(",")
+  var rest = comma < 0 ? "" : after.slice(comma + 1).trim()
+  var rounds = 0
+  var r = /^(\d+)\.?\s*roun\w*\s*,?\s*/i.exec(rest)
+  if (r) {
+    rounds = parseInt(r[1], 10)
+    rest = rest.slice(r[0].length)
+  }
+  rest = rest.replace(/\.\s*$/, "").trim()
+
+  var belt = /^for\s+/i.test(rest) ? capitalize(rest.replace(/^for\s+(the\s+)?/i, "")) : ""
+  return {
+    id: String(index),
+    order: index,
+    red: boxer(text.slice(0, vs.index)),
+    blue: boxer(comma < 0 ? after : after.slice(0, comma)),
+    rounds: rounds,
+    titleFight: titleFight,
+    belt: belt,
+    weightClass: belt ? "" : capitalize(rest.replace(/weights$/i, "weight")),
+    mainEvent: false
+  }
+}
+
+function sameBout(a, b) {
+  return a.red.lastName === b.red.lastName && a.blue.lastName === b.blue.lastName
+}
+
+function cardKey(heading) {
+  return heading.dayMs + "|" + heading.location.toLowerCase()
+}
+
+function newCard(heading) {
+  var d = new Date(heading.dayMs)
+  return {
+    id: cardKey(heading),
+    sport: "boxing",
+    dayMs: heading.dayMs,
+    year: d.getUTCFullYear(),
+    month: d.getUTCMonth(),
+    day: d.getUTCDate(),
+    location: heading.location,
+    broadcasts: heading.broadcasts,
+    url: boxingPageUrl + "#" + monthAnchors[d.getUTCMonth()],
+    fights: [],
+    headline: "",
+    big: false,
+    titleFight: false,
+    fightCount: 0
+  }
+}
+
+// ESPN lists each card top of the bill first, so the first bout headlines
+// unless the key dates name a different one.
+function finishCard(card, keyBout) {
+  var main = card.fights[0] || null
+  card.fights.forEach(function(f) {
+    if (keyBout && sameBout(f, keyBout)) main = f
+    if (f.titleFight) card.titleFight = true
+  })
+  if (main) {
+    main.mainEvent = true
+    card.headline = main.red.lastName + " vs. " + main.blue.lastName
+    card.fights = [main].concat(card.fights.filter(function(f) { return f !== main }))
+  }
+  card.fightCount = card.fights.length
+  return card
+}
+
+function listItems(html) {
+  var items = []
+  var re = /<li[^>]*>([\s\S]*?)<\/li>/gi
+  var m
+  while ((m = re.exec(html)) !== null) items.push(m[1])
+  return items
+}
+
+// The "Key dates" list is ESPN's pick of the big fights: one line per card,
+// "<b>Oct. 31: Riyadh (DAZN PPV)</b> -- Title fight: Alvarez vs. Mbilli…".
+function parseKeyDates(story, referenceMs) {
+  var start = story.search(/<h2[^>]*>\s*Key dates/i)
+  if (start < 0) return []
+  var end = story.indexOf("<h2", story.indexOf("</h2>", start))
+  var section = story.slice(start, end < 0 ? story.length : end)
+  var out = []
+  listItems(section).forEach(function(item) {
+    var m = /<b>([\s\S]*?)<\/b>\s*(?:--|–|—)?\s*([\s\S]*)$/i.exec(item)
+    var heading = m ? parseCardHeading(m[1], referenceMs) : null
+    var bout = m ? parseBout(m[2], 0) : null
+    if (heading && bout) out.push({ heading: heading, bout: bout })
+  })
+  return out
+}
+
+// Returns null (not []) when the response is unusable or no card could be
+// read, so a format change on ESPN's side shows as an error, not as an
+// empty schedule.
+function parseBoxingSchedule(raw, nowMs) {
+  var data
+  try {
+    data = typeof raw === "string" ? JSON.parse(raw) : raw
+  } catch (e) {
+    return null
+  }
+  var story = data && Array.isArray(data.headlines) && data.headlines[0] ? data.headlines[0] : null
+  if (!story || typeof story.story !== "string") return null
+
+  var referenceMs = parseTime(story.lastModified || story.published)
+  if (isNaN(referenceMs)) referenceMs = nowMs
+  var html = story.story
+  var cards = {}
+  var order = []
+
+  var re = /<h3[^>]*>([\s\S]*?)<\/h3>([\s\S]*?)(?=<h3|<h2|$)/gi
+  var m
+  while ((m = re.exec(html)) !== null) {
+    var heading = parseCardHeading(m[1], referenceMs)
+    if (!heading) continue
+    var key = cardKey(heading)
+    if (!cards[key]) {
+      cards[key] = newCard(heading)
+      order.push(key)
+    }
+    listItems(m[2]).forEach(function(item) {
+      var bout = parseBout(item, cards[key].fights.length)
+      if (bout) cards[key].fights.push(bout)
+    })
+  }
+
+  var keyBouts = {}
+  parseKeyDates(html, referenceMs).forEach(function(k) {
+    var key = cardKey(k.heading)
+    if (!cards[key]) {
+      cards[key] = newCard(k.heading)
+      cards[key].fights.push(k.bout)
+      order.push(key)
+    }
+    cards[key].big = true
+    keyBouts[key] = k.bout
+  })
+
+  var list = order.map(function(key) { return finishCard(cards[key], keyBouts[key] || null) })
+  if (list.length === 0) return null
+  return list.sort(function(a, b) { return a.dayMs - b.dayMs })
+}
+
+// "big" is ESPN's key dates. If the story ever drops that list, title fights
+// stand in rather than the tab going empty.
+function boxingCards(cards, scope, nowMs) {
+  var s = boxingScope(scope)
+  if (s === "off") return []
+  var upcomingCards = (cards || []).filter(function(c) { return nowMs < c.dayMs + boxingStaleAfterMs })
+  if (s === "all") return upcomingCards
+  var anyBig = (cards || []).some(function(c) { return c.big })
+  return upcomingCards.filter(function(c) { return s === "big" && anyBig ? c.big : c.titleFight })
+}
+
+// Calendar days from the viewer's today to the card's date. Fight dates are
+// local to the venue, so the comparison is by date, not by instant.
+function daysUntil(card, nowMs) {
+  var d = new Date(nowMs)
+  var today = Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())
+  return Math.round((card.dayMs - today) / dayMs)
+}
+
+// Yesterday's date still reads "Fight night": a Saturday show in the US runs
+// into Sunday for anyone east of it.
+function boxingStatus(card, nowMs) {
+  if (!card) return ""
+  var days = daysUntil(card, nowMs)
+  if (days <= 0) return "Fight night"
+  if (days === 1) return "Tomorrow"
+  return "In " + days + " days"
+}
+
+// A local-midnight Date for Qt.formatDate, so the weekday is the card's.
+function cardDate(card) {
+  return new Date(card.year, card.month, card.day)
+}
+
+function boutRounds(fight) {
+  return fight.rounds > 0 ? fight.rounds + " RDS" : ""
+}
+
+function boutNote(fight) {
+  return fight.belt || fight.weightClass
+}
+
 if (typeof module !== "undefined") {
   module.exports = {
     glyphs: glyphs,
@@ -322,6 +616,23 @@ if (typeof module !== "undefined") {
     barLabel: barLabel,
     statusText: statusText,
     timeFormat: timeFormat,
-    cornerDetail: cornerDetail
+    cornerDetail: cornerDetail,
+    sports: sports,
+    boxingScopes: boxingScopes,
+    boxingStoryUrl: boxingStoryUrl,
+    decodeEntities: decodeEntities,
+    plainText: plainText,
+    sport: sport,
+    boxingScope: boxingScope,
+    nearestDate: nearestDate,
+    parseCardHeading: parseCardHeading,
+    parseBout: parseBout,
+    parseBoxingSchedule: parseBoxingSchedule,
+    boxingCards: boxingCards,
+    daysUntil: daysUntil,
+    boxingStatus: boxingStatus,
+    cardDate: cardDate,
+    boutRounds: boutRounds,
+    boutNote: boutNote
   }
 }
