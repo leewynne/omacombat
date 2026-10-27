@@ -102,6 +102,7 @@ BarWidget {
     function next(): void { root.step(1) }
     function previous(): void { root.step(-1) }
     function ufc(): void { root.openSport("ufc") }
+    function one(): void { root.openSport("one") }
     function boxing(): void { root.openSport("boxing") }
     function insertCoin(): void { root.openArcade() }
   }

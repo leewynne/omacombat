@@ -312,7 +312,7 @@ function cornerDetail(f) {
 
 // ---------- boxing ----------
 
-var sports = ["ufc", "boxing"]
+var sports = ["ufc", "one", "boxing"]
 var boxingScopes = ["big", "titles", "all", "off"]
 var monthIndex = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 }
 var monthAnchors = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"]
@@ -344,7 +344,7 @@ function plainText(html) {
 }
 
 function sport(value) {
-  return value === "boxing" ? "boxing" : "ufc"
+  return sports.indexOf(value) >= 0 ? value : "ufc"
 }
 
 function boxingScope(value) {
@@ -594,8 +594,199 @@ function boutRounds(fight) {
   return fight.rounds > 0 ? fight.rounds + " RDS" : ""
 }
 
+// The tag under "vs": a boxing bout's rounds, a ONE bout's discipline.
+function boutTag(fight) {
+  return fight.discipline ? fight.discipline.toUpperCase() : boutRounds(fight)
+}
+
 function boutNote(fight) {
-  return fight.belt || fight.weightClass
+  var note = fight.belt || fight.weightClass
+  if (fight.result) note += (note ? " · " : "") + fight.result
+  return note
+}
+
+function boutAccent(fight) {
+  return !!fight.belt || fight.titleFight === true
+}
+
+// ---------- ONE Championship ----------
+
+// ONE's own schedule page. Its event pages carry the fight cards, and
+// results once bouts finish.
+var oneScheduleUrl = "https://www.onefc.com/events/"
+var oneScopes = ["all", "big", "off"]
+var oneDisciplines = [["submission grappling", "Grappling"], ["muay thai", "Muay Thai"], ["kickboxing", "Kickboxing"], ["mma", "MMA"]]
+
+// A ONE card runs three to five hours: it counts as live for six, and drops
+// off the schedule after eight.
+var oneLiveMs = 6 * 60 * minuteMs
+var oneStaleAfterMs = 8 * 60 * minuteMs
+
+function oneScope(value) {
+  return oneScopes.indexOf(value) >= 0 ? value : "all"
+}
+
+function tidyVersus(text) {
+  return String(text || "").replace(/\s+vs\.?\s+/gi, " vs. ")
+}
+
+// "ONE Fight Night 49: Gabriel Vs. Magomedov" splits like a UFC name, but
+// "ONE: Qatar" is just a name.
+function oneName(name) {
+  var parts = splitName(name)
+  if (!/\svs\.?\s/i.test(parts.headline)) return { brand: name, headline: "" }
+  return { brand: parts.brand, headline: tidyVersus(parts.headline) }
+}
+
+// Returns null when the page has no upcoming section, so a redesign shows
+// as an error rather than an empty schedule.
+function parseOneSchedule(raw) {
+  var html = String(raw || "")
+  var start = html.indexOf('id="upcoming-events-section"')
+  if (start < 0) return null
+  var end = html.indexOf('<a id="past"', start)
+  var section = html.slice(start, end < 0 ? html.length : end)
+  var chunks = section.split('<div class="simple-post-card is-event')
+  var out = []
+  for (var i = 1; i < chunks.length; i++) {
+    var link = /<a class="title" href="(https:\/\/www\.onefc\.com\/events\/[^"]+)"[^>]*>\s*<h3>([\s\S]*?)<\/h3>/.exec(chunks[i])
+    var stamp = /data-timestamp="(\d+)"/.exec(chunks[i])
+    if (!link || !stamp) continue
+    var place = /class="location">([\s\S]*?)<\/div>/.exec(chunks[i])
+    var name = plainText(link[2])
+    var names = oneName(name)
+    out.push({
+      id: link[1],
+      sport: "one",
+      name: name,
+      brand: names.brand,
+      headline: names.headline,
+      startMs: parseInt(stamp[1], 10) * 1000,
+      location: place ? plainText(place[1]) : "",
+      broadcasts: [],
+      url: link[1],
+      big: !/friday fights/i.test(name)
+    })
+  }
+  return out.sort(function(a, b) { return a.startMs - b.startMs })
+}
+
+function oneCorner(face, name) {
+  var sticker = /class="sticker([^"]*)">([\s\S]*?)<\/div>/.exec(face || "")
+  var method = sticker ? /<span class="opacity-50 d-none[^"]*">([\s\S]*?)<\/span>/.exec(sticker[2]) : null
+  return {
+    winner: !!sticker && /\bis-win\b/.test(sticker[1]),
+    method: method ? plainText(method[1]) : (sticker ? plainText(sticker[2]) : "")
+  }
+}
+
+function oneFighter(name, short, country, winner) {
+  var full = plainText(name)
+  return {
+    name: full || "TBA",
+    lastName: plainText(short) || (full ? boxer(full).lastName : "TBA"),
+    record: "",
+    country: plainText(country),
+    winner: winner
+  }
+}
+
+// "Bantamweight Kickboxing World Championship" -> discipline "Kickboxing",
+// weight class "Bantamweight World Championship", a title fight.
+function oneBout(block, index) {
+  var title = plainText((/class="title">([\s\S]*?)<\/div>/.exec(block) || [])[1])
+  var versus = plainText((/class="versus">([\s\S]*?)<\/div>/.exec(block) || [])[1]).split(/\s+vs\.?\s+/i)
+  var names = []
+  var re = /<td>\s*<a [^>]*title="([^"]*)"/g
+  var m
+  while ((m = re.exec(block)) !== null) names.push(m[1])
+  var countries = /<td>([^<]*)<\/td>\s*<th>\s*Country\s*<\/th>\s*<td>([^<]*)<\/td>/.exec(block) || ["", "", ""]
+  var face1 = block.indexOf('class="face face1"')
+  var face2 = block.indexOf('class="face face2"')
+  var stats = block.indexOf('class="stats"')
+  var c1 = oneCorner(face1 >= 0 ? block.slice(face1, face2 >= 0 ? face2 : stats) : "")
+  var c2 = oneCorner(face2 >= 0 ? block.slice(face2, stats >= 0 ? stats : block.length) : "")
+
+  var discipline = ""
+  var lower = title.toLowerCase()
+  for (var i = 0; i < oneDisciplines.length; i++) {
+    if (lower.indexOf(oneDisciplines[i][0]) >= 0) {
+      discipline = oneDisciplines[i][1]
+      title = title.replace(new RegExp("\\s*" + oneDisciplines[i][0], "i"), "")
+      break
+    }
+  }
+  var red = oneFighter(names[0], versus[0], countries[1], c1.winner)
+  var blue = oneFighter(names[1], versus[1], countries[2], c2.winner)
+  var winner = red.winner ? red : (blue.winner ? blue : null)
+  var method = winner === red ? c1.method : (winner === blue ? c2.method : (c1.method || c2.method))
+  return {
+    id: String(index),
+    order: index,
+    red: red,
+    blue: blue,
+    discipline: discipline,
+    weightClass: title.trim(),
+    titleFight: /world (championship|title)/i.test(title),
+    belt: "",
+    rounds: 0,
+    result: winner ? winner.lastName + " · " + method : method,
+    mainEvent: index === 0
+  }
+}
+
+// The bouts on an event page, main event first. Returns null when the
+// response isn't one of ONE's pages at all.
+function parseOneCard(raw) {
+  var html = String(raw || "")
+  if (html.indexOf("onefc.com") < 0) return null
+  var blocks = html.split(/<div class="event-matchup[^"]*">/)
+  var bouts = []
+  for (var i = 1; i < blocks.length; i++) bouts.push(oneBout(blocks[i], i - 1))
+  return bouts
+}
+
+function oneEvents(events, scope, nowMs) {
+  var s = oneScope(scope)
+  if (s === "off") return []
+  return (events || []).filter(function(e) {
+    return nowMs < e.startMs + oneStaleAfterMs && (s === "all" || e.big)
+  })
+}
+
+function oneLive(event, nowMs) {
+  return !!event && nowMs >= event.startMs && nowMs < event.startMs + oneLiveMs
+}
+
+function oneStatus(event, nowMs) {
+  if (!event) return ""
+  if (oneLive(event, nowMs)) return "Live now"
+  return "In " + countdownLong(event.startMs, nowMs)
+}
+
+// The small line over the headline: the brand when the name carries the
+// headliners, the event's full name once its card supplies them, and the
+// promotion while neither is known.
+function oneCaption(event, bouts) {
+  if (!event) return "ONE Championship"
+  if (event.headline) return event.brand
+  return bouts && bouts.length > 0 ? event.name : "ONE Championship"
+}
+
+function oneHeadline(event, bouts) {
+  if (!event) return ""
+  if (event.headline) return event.headline
+  var main = bouts && bouts[0]
+  return main ? main.red.lastName + " vs. " + main.blue.lastName : ""
+}
+
+// A card is fetched when it's first shown, then again every 15 minutes, or
+// every 2 while the event is live so results come through.
+function oneCardStale(entry, event, nowMs) {
+  if (!entry) return true
+  var age = nowMs - entry.fetchedAt
+  if (entry.failed) return age > minuteMs
+  return age > (oneLive(event, nowMs) ? 2 : 15) * minuteMs
 }
 
 if (typeof module !== "undefined") {
@@ -633,6 +824,20 @@ if (typeof module !== "undefined") {
     boxingStatus: boxingStatus,
     cardDate: cardDate,
     boutRounds: boutRounds,
-    boutNote: boutNote
+    boutTag: boutTag,
+    boutNote: boutNote,
+    boutAccent: boutAccent,
+    oneScheduleUrl: oneScheduleUrl,
+    oneScopes: oneScopes,
+    oneScope: oneScope,
+    oneName: oneName,
+    parseOneSchedule: parseOneSchedule,
+    parseOneCard: parseOneCard,
+    oneEvents: oneEvents,
+    oneLive: oneLive,
+    oneStatus: oneStatus,
+    oneCaption: oneCaption,
+    oneHeadline: oneHeadline,
+    oneCardStale: oneCardStale
   }
 }

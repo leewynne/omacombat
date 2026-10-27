@@ -1,8 +1,8 @@
 # OmaCombat
 
 The next UFC event in your Omarchy bar. Click it for the full fight card, step
-through every upcoming event with the arrows, and switch to the big boxing
-fights coming up.
+through every upcoming event with the arrows, and switch to ONE Championship
+or the big boxing fights coming up.
 
 ![OmaCombat: the UFC fight card and the boxing tab](preview.png)
 
@@ -16,6 +16,10 @@ fights coming up.
 - **Browse ahead** through every scheduled event with ‹ › or `h` / `l`.
 - **Live results**: while an event is on, it refreshes every two minutes and
   highlights each winner as bouts finish.
+- **ONE Championship**: the ONE tab (or `o`) lists every ONE event with its
+  start time in your time zone, venue and full card: MMA, Muay Thai,
+  kickboxing and grappling, title fights marked, and results with the winner
+  and method as bouts finish.
 - **Boxing**: a switch at the top of the popup (or `b`) lists the big boxing
   fights coming up, with the date, city, broadcaster, rounds and the titles on
   the line for every bout on the card. UFC is always where it opens.
@@ -53,16 +57,17 @@ omarchy bar set leewynne.omacombat label icon
 | Middle click | Refresh |
 | Right click | Open the next UFC event on ESPN |
 
-Inside the popup: `u` and `b` switch between UFC and boxing, `←` `→` or `h`
-`l` change event, `↑` `↓` or `j` `k` scroll the card, `Enter` opens the event
-on ESPN, `r` refreshes, `Esc` closes, and `Tab` moves to the neighbouring bar
-panel.
+Inside the popup: `u`, `o` and `b` switch between UFC, ONE and boxing, `←`
+`→` or `h` `l` change event, `↑` `↓` or `j` `k` scroll the card, `Enter`
+opens the event's page, `r` refreshes, `Esc` closes, and `Tab` moves to the
+neighbouring bar panel.
 
 It can also be driven over IPC, for a keybinding for instance:
 
 ```bash
 omarchy-shell shell toggle leewynne.omacombat '{}'
 omarchy-shell leewynne.omacombat ufc
+omarchy-shell leewynne.omacombat one
 omarchy-shell leewynne.omacombat boxing
 omarchy-shell leewynne.omacombat next
 omarchy-shell leewynne.omacombat previous
@@ -75,6 +80,7 @@ Change these from the bar settings, or with `omarchy bar set`:
 
 ```bash
 omarchy bar set leewynne.omacombat label icon
+omarchy bar set leewynne.omacombat one big
 omarchy bar set leewynne.omacombat boxing titles
 omarchy bar set leewynne.omacombat clock 24h
 omarchy bar set leewynne.omacombat refreshMinutes 60 --json
@@ -83,6 +89,7 @@ omarchy bar set leewynne.omacombat refreshMinutes 60 --json
 | Key | Values | Default |
 |---|---|---|
 | `label` | `fighters` (`Gane vs. Hokit · 6d`) or `icon` (the glove alone) | `fighters` |
+| `one` | `all`, `big` (skips the weekly ONE Friday Fights) or `off` (no ONE tab) | `all` |
 | `boxing` | `big` (ESPN's key dates), `titles` (every card with a world title fight), `all` (ESPN's full schedule) or `off` (no boxing tab) | `big` |
 | `clock` | `locale`, `24h`, `12h` | `locale` |
 | `refreshMinutes` | 5–240 | `30` |
@@ -95,16 +102,23 @@ UFC schedules, cards and results come from ESPN's public UFC scoreboard
 read through ESPN's news API (`now.core.api.espn.com`). That story lists dates
 but not start times, so boxing cards show the day only, and it has no results.
 
-The plugin makes one request to each every `refreshMinutes` (the UFC one every
+ONE Championship's schedule and cards come from the events pages on
+[onefc.com](https://www.onefc.com/events/). A card is only fetched for the
+event you're looking at, when you open it and every 15 minutes after, or every
+two minutes while that event is live.
+
+The plugin requests each schedule every `refreshMinutes` (the UFC one every
 two minutes while an event is live) and sends nothing else. No account or API
 key is needed.
 
-ESPN's feeds are undocumented and the boxing schedule is written by hand, so
-either could change; if a tab stops loading, please open an issue.
+ESPN's feeds are undocumented, the boxing schedule is written by hand, and
+ONE's pages are read as HTML, so any of them could change; if a tab stops
+loading, please open an issue.
 
-UFC is a registered trademark of Zuffa, LLC. This plugin is a fan project and
-is not affiliated with, endorsed or sponsored by the UFC, Zuffa, TKO, ESPN or
-any boxing promoter or sanctioning body.
+UFC is a registered trademark of Zuffa, LLC, and ONE Championship a trademark
+of its owners. This plugin is a fan project and is not affiliated with,
+endorsed or sponsored by the UFC, Zuffa, TKO, ONE Championship, ESPN or any
+boxing promoter or sanctioning body.
 
 Yie Ar Kung-Fu is Konami's. The tribute hidden in this plugin uses original
 art, rules and code, contains nothing from Konami's games, and is not
@@ -127,7 +141,8 @@ This removes the plugin folder and its bar entry. It stores nothing else.
 The model (`Model.js`) and the game (`Arcade.js`) are plain JavaScript shared
 by the QML and the node tests. `tests/fixtures/scoreboard.json` is a trimmed
 real ESPN UFC response and `tests/fixtures/boxing.json` a real copy of the
-boxing schedule story.
+boxing schedule story; the `one-*.html` fixtures are trimmed copies of
+onefc.com's schedule and two event pages.
 
 The game's sound effects in `sounds/` are synthesised by `node tools/sfx.js`.
 They play through Qt Multimedia when it's installed, or PipeWire's `pw-play`

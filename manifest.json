@@ -5,7 +5,7 @@
   "version": "2.0.0",
   "author": "leewynne",
   "license": "MIT",
-  "description": "Upcoming UFC and MMA fight cards in your bar, with the big boxing fights a click away: a countdown to the next UFC event and a popup that steps through every card, with records and live results from ESPN. Formerly Next UFC.",
+  "description": "Upcoming UFC and MMA fight cards in your bar, with ONE Championship (ONE FC) and the big boxing fights a click away: a countdown to the next UFC event and a popup that steps through every card, with records and live results. Formerly Next UFC.",
   "kinds": [
     "bar-widget"
   ],
@@ -14,12 +14,16 @@
   },
   "barWidget": {
     "displayName": "OmaCombat",
-    "description": "Countdown to the next UFC event, with the full fight card, arrows to browse the events after it, and a switch to the big boxing fights coming up.",
+    "description": "Countdown to the next UFC event, with the full fight card, arrows to browse the events after it, and tabs for ONE Championship and the big boxing fights coming up.",
     "category": "Info",
     "aliases": [
       "ufc",
       "mma",
+      "one",
+      "onefc",
       "boxing",
+      "muay-thai",
+      "kickboxing",
       "fight",
       "espn"
     ],
@@ -29,7 +33,8 @@
       "label": "fighters",
       "clock": "locale",
       "refreshMinutes": 30,
-      "boxing": "big"
+      "boxing": "big",
+      "one": "all"
     },
     "schema": [
       {
@@ -54,6 +59,18 @@
         ],
         "defaultValue": "locale",
         "description": "Times are always shown in your local time zone. locale follows the system's time format."
+      },
+      {
+        "key": "one",
+        "type": "enum",
+        "label": "ONE Championship",
+        "options": [
+          "all",
+          "big",
+          "off"
+        ],
+        "defaultValue": "all",
+        "description": "Which ONE events the panel's ONE tab lists. all: every event. big: skips the weekly ONE Friday Fights. off: hide the tab."
       },
       {
         "key": "boxing",

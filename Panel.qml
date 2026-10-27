@@ -6,10 +6,10 @@ import qs.Ui
 import "Model.js" as Model
 import "Arcade.js" as Arcade
 
-// Fetches the UFC and boxing schedules from ESPN and shows one fight card at
-// a time. UFC is the default; the switch at the top (or u/b) changes sport.
-// The arrows (or h/l) step through upcoming events; Return opens the event on
-// ESPN.
+// Fetches the UFC and boxing schedules from ESPN and ONE Championship's from
+// onefc.com, and shows one fight card at a time. UFC is the default; the
+// switch at the top (or u/o/b) changes sport. The arrows (or h/l) step
+// through upcoming events; Return opens the event's page.
 Panel {
   id: root
   moduleName: "leewynne.omacombat"
@@ -40,6 +40,16 @@ Panel {
   property int boxingIndex: 0
   property int boxingRetries: 0
 
+  // ONE's schedule, plus each event's card as it's fetched, by page URL.
+  property var oneAll: []
+  property bool oneLoaded: false
+  property bool oneFailed: false
+  property real oneFetchedAt: 0
+  property int oneIndex: 0
+  property int oneRetries: 0
+  property var oneCards: ({})
+  property string oneCardUrl: ""
+
   // ↑ ↑ ↓ ↓ ← → ← → B A opens Yie Ar Kung-Fu in place of the fight card.
   property var konami: []
   property bool arcadeOn: false
@@ -59,21 +69,42 @@ Panel {
   readonly property var boxingSchedule: Model.boxingCards(boxingAll, boxingScope, now)
   readonly property var card: boxingSchedule.length > 0 ? boxingSchedule[Math.max(0, Math.min(boxingIndex, boxingSchedule.length - 1))] : null
 
-  // What the panel is showing: the UFC event or the boxing card.
+  readonly property string oneScope: Model.oneScope(String(setting("one", "all")))
+  readonly property bool oneEnabled: oneScope !== "off"
+  readonly property var oneSchedule: Model.oneEvents(oneAll, oneScope, now)
+  readonly property var oneEvent: oneSchedule.length > 0 ? oneSchedule[Math.max(0, Math.min(oneIndex, oneSchedule.length - 1))] : null
+  readonly property var oneEntry: oneEvent ? (oneCards[oneEvent.url] || null) : null
+  readonly property var oneBouts: oneEntry ? oneEntry.bouts : null
+
+  readonly property var sportOptions: {
+    var options = [{ value: "ufc", label: "UFC", tooltip: "UFC (u)" }]
+    if (oneEnabled) options.push({ value: "one", label: "ONE", tooltip: "ONE Championship (o)" })
+    if (boxingEnabled) options.push({ value: "boxing", label: "Boxing", tooltip: "Boxing (b)" })
+    return options
+  }
+
+  // What the panel is showing: the UFC event, the ONE event or the boxing
+  // card.
   readonly property bool onBoxing: sport === "boxing" && boxingEnabled
-  readonly property var current: onBoxing ? card : event
-  readonly property var currentList: onBoxing ? boxingSchedule : schedule
-  readonly property int currentIndex: onBoxing ? Math.min(boxingIndex, boxingSchedule.length - 1) : Math.min(index, schedule.length - 1)
-  readonly property bool currentLive: onBoxing ? (card !== null && Model.daysUntil(card, now) <= 0) : Model.isLive(event, now)
-  readonly property bool currentFailed: onBoxing ? boxingFailed : failed
-  readonly property bool currentLoaded: onBoxing ? boxingLoaded : loaded
-  readonly property real currentFetchedAt: onBoxing ? boxingFetchedAt : fetchedAt
+  readonly property bool onOne: sport === "one" && oneEnabled
+  readonly property var current: onBoxing ? card : (onOne ? oneEvent : event)
+  readonly property var currentList: onBoxing ? boxingSchedule : (onOne ? oneSchedule : schedule)
+  readonly property int currentIndex: Math.min(onBoxing ? boxingIndex : (onOne ? oneIndex : index), currentList.length - 1)
+  readonly property bool currentLive: onBoxing ? (card !== null && Model.daysUntil(card, now) <= 0)
+    : (onOne ? Model.oneLive(oneEvent, now) : Model.isLive(event, now))
+  readonly property bool currentFailed: onBoxing ? boxingFailed : (onOne ? oneFailed : failed)
+  readonly property bool currentLoaded: onBoxing ? boxingLoaded : (onOne ? oneLoaded : loaded)
+  readonly property real currentFetchedAt: onBoxing ? boxingFetchedAt : (onOne ? oneFetchedAt : fetchedAt)
+  readonly property string currentHeadline: !current ? ""
+    : (onOne ? (Model.oneHeadline(oneEvent, oneBouts) || oneEvent.name) : (current.headline || current.name))
 
   readonly property string label: Model.barLabel(nextEvent, now, labelStyle)
+  readonly property var nextOne: oneSchedule.length > 0 ? oneSchedule[0] : null
   readonly property var nextBoxing: boxingSchedule.length > 0 ? boxingSchedule[0] : null
   readonly property string tooltip: (nextEvent
     ? nextEvent.name + "\n" + formatDay(nextEvent.mainCardMs) + " · " + formatTime(nextEvent.mainCardMs)
     : (failed ? "Couldn't reach ESPN" : "OmaCombat"))
+    + (nextOne ? "\n\nONE: " + nextOne.name + "\n" + formatDay(nextOne.startMs) + " · " + formatTime(nextOne.startMs) : "")
     + (nextBoxing ? "\n\nBoxing: " + nextBoxing.headline + "\n" + formatDay(Model.cardDate(nextBoxing).getTime()) : "")
 
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
@@ -83,6 +114,7 @@ Panel {
   function open() {
     index = 0
     boxingIndex = 0
+    oneIndex = 0
     sport = "ufc"
     konami = []
     arcadeOn = false
@@ -91,6 +123,7 @@ Panel {
     root.controller.show()
     if (Date.now() - fetchedAt > 5 * 60 * 1000) refreshUfc()
     if (Date.now() - boxingFetchedAt > 30 * 60 * 1000) refreshBoxing()
+    if (Date.now() - oneFetchedAt > 30 * 60 * 1000) refreshOne()
   }
 
   function openSport(name) {
@@ -101,9 +134,11 @@ Panel {
   function showSport(name) {
     var next = Model.sport(name)
     if (next === "boxing" && !boxingEnabled) return
+    if (next === "one" && !oneEnabled) return
     if (next === sport) return
     sport = next
     cardScroll.contentY = 0
+    ensureOneCard()
   }
 
   function close() {
@@ -144,8 +179,10 @@ Panel {
     if (currentList.length === 0) return
     var next = Math.max(0, Math.min(currentList.length - 1, currentIndex + delta))
     if (onBoxing) boxingIndex = next
+    else if (onOne) oneIndex = next
     else index = next
     cardScroll.contentY = 0
+    ensureOneCard()
   }
 
   function scroll(direction) {
@@ -163,6 +200,55 @@ Panel {
   function refresh() {
     refreshUfc()
     refreshBoxing()
+    refreshOne()
+    if (onOne && oneEvent) fetchOneCard(oneEvent.url)
+  }
+
+  function refreshOne() {
+    oneRetries = 0
+    fetchOne()
+  }
+
+  function fetchOne() {
+    if (!oneEnabled || oneProc.running) return
+    oneProc.command = ["curl", "-fsSL", "--compressed", "--max-time", "20", "-A", "OmaCombat (Omarchy plugin)", Model.oneScheduleUrl]
+    oneProc.running = true
+  }
+
+  function scheduleOneRetry() {
+    if (oneRetries >= 3) return
+    oneRetries++
+    oneRetryTimer.restart()
+  }
+
+  // Cards are fetched for the ONE event on show, one page at a time.
+  function ensureOneCard() {
+    if (!onOne || !oneEvent || !root.opened) return
+    if (Model.oneCardStale(oneEntry, oneEvent, Date.now())) fetchOneCard(oneEvent.url)
+  }
+
+  function fetchOneCard(url) {
+    if (oneCardProc.running) return
+    oneCardUrl = url
+    oneCardProc.command = ["curl", "-fsSL", "--compressed", "--max-time", "20", "-A", "OmaCombat (Omarchy plugin)", url]
+    oneCardProc.running = true
+  }
+
+  function storeOneCard(url, bouts) {
+    var next = {}
+    for (var k in oneCards) next[k] = oneCards[k]
+    var last = oneCards[url]
+    next[url] = {
+      bouts: bouts === null ? (last ? last.bouts : null) : bouts,
+      failed: bouts === null,
+      fetchedAt: Date.now()
+    }
+    oneCards = next
+  }
+
+  function oneEmptyText() {
+    if (oneScope === "big") return "No big ONE events on the schedule right now."
+    return "ONE's schedule is empty right now."
   }
 
   function refreshUfc() {
@@ -258,6 +344,63 @@ Panel {
         root.now = Date.now()
       }
     }
+  }
+
+  Process {
+    id: oneProc
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        var parsed = Model.parseOneSchedule(String(text || ""))
+        if (parsed === null) {
+          root.oneFailed = true
+          root.scheduleOneRetry()
+          return
+        }
+        root.oneAll = parsed
+        root.oneLoaded = true
+        root.oneFailed = false
+        root.oneRetries = 0
+        root.oneFetchedAt = Date.now()
+        root.now = Date.now()
+        root.ensureOneCard()
+      }
+    }
+  }
+
+  Process {
+    id: oneCardProc
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        root.storeOneCard(root.oneCardUrl, Model.parseOneCard(String(text || "")))
+        // Stepping on while this one loaded may have left another to fetch.
+        Qt.callLater(root.ensureOneCard)
+      }
+    }
+  }
+
+  Timer {
+    id: oneRetryTimer
+    interval: 5000
+    onTriggered: root.fetchOne()
+  }
+
+  Timer {
+    interval: root.refreshMinutes * 60 * 1000
+    running: root.oneEnabled
+    repeat: true
+    triggeredOnStart: true
+    onTriggered: root.refreshOne()
+  }
+
+  // While the ONE tab is up, keep its card fresh: results land every two
+  // minutes during a live event.
+  Timer {
+    interval: 30 * 1000
+    running: root.opened && root.onOne
+    repeat: true
+    onTriggered: root.ensureOneCard()
   }
 
   // ESPN occasionally drops a request; a few quick retries beat waiting out
@@ -417,12 +560,14 @@ Panel {
     }
   }
 
-  // A boxing bout: the story has names, rounds and either the title at stake
-  // or the weight class, which runs underneath because it can be long.
+  // A boxing or ONE bout: names, a tag under "vs" (rounds, or ONE's
+  // discipline), and a line underneath for the title or weight class and,
+  // once it's over, the result.
   component BoutRow: Column {
     id: bout
     required property var modelData
     readonly property real middleWidth: Style.space(104)
+    readonly property bool decided: modelData.red.winner || modelData.blue.winner
 
     width: parent ? parent.width : 0
     topPadding: Style.space(5)
@@ -440,7 +585,7 @@ Panel {
         width: (parent.width - bout.middleWidth) / 2
         fighter: bout.modelData.red
         alignRight: false
-        decided: false
+        decided: bout.decided
         emphasized: bout.modelData.mainEvent
       }
 
@@ -466,7 +611,7 @@ Panel {
           width: parent.width
           horizontalAlignment: Text.AlignHCenter
           visible: text !== ""
-          text: Model.boutRounds(bout.modelData)
+          text: Model.boutTag(bout.modelData)
           color: bout.modelData.titleFight ? Color.accent : root.dim
           font.family: root.fontFamily
           font.pixelSize: Style.font.caption
@@ -480,7 +625,7 @@ Panel {
         width: (parent.width - bout.middleWidth) / 2
         fighter: bout.modelData.blue
         alignRight: true
-        decided: false
+        decided: bout.decided
         emphasized: bout.modelData.mainEvent
       }
     }
@@ -492,7 +637,7 @@ Panel {
       wrapMode: Text.WordWrap
       visible: text !== ""
       text: Model.boutNote(bout.modelData)
-      color: bout.modelData.belt !== "" ? Color.accent : root.dim
+      color: Model.boutAccent(bout.modelData) ? Color.accent : root.dim
       font.family: root.fontFamily
       font.pixelSize: Style.font.caption
     }
@@ -529,6 +674,7 @@ Panel {
       onTextKey: function(t) {
         if (t === "r") root.refresh()
         else if (t === "u") root.showSport("ufc")
+        else if (t === "o") root.showSport("one")
         else if (t === "b") root.showSport("boxing")
         root.konamiKey(t.toLowerCase())
       }
@@ -578,13 +724,10 @@ Panel {
 
         ButtonGroup {
           anchors.horizontalCenter: parent.horizontalCenter
-          visible: root.boxingEnabled
+          visible: root.sportOptions.length > 1
           focusable: false
-          options: [
-            { value: "ufc", label: "UFC", tooltip: "UFC (u)" },
-            { value: "boxing", label: "Boxing", tooltip: "Boxing (b)" }
-          ]
-          value: root.onBoxing ? "boxing" : "ufc"
+          options: root.sportOptions
+          value: root.onBoxing ? "boxing" : (root.onOne ? "one" : "ufc")
           foreground: root.barForeground
           fontFamily: root.fontFamily
           fontSize: Style.font.bodySmall
@@ -621,7 +764,9 @@ Panel {
               width: parent.width
               horizontalAlignment: Text.AlignHCenter
               elide: Text.ElideRight
-              text: (root.onBoxing ? "BOXING" : (root.event ? root.event.brand.toUpperCase() : "UFC"))
+              text: (root.onBoxing ? "BOXING"
+                : (root.onOne ? Model.oneCaption(root.oneEvent, root.oneBouts).toUpperCase()
+                : (root.event ? root.event.brand.toUpperCase() : "UFC")))
                 + (root.current ? "  ·  " + (root.currentIndex + 1) + " / " + root.currentList.length : "")
               color: root.dim
               font.family: root.fontFamily
@@ -636,8 +781,8 @@ Panel {
               horizontalAlignment: Text.AlignHCenter
               elide: Text.ElideRight
               text: root.current
-                ? (root.current.headline || root.current.name)
-                : (root.currentFailed ? "Couldn't reach ESPN" : (root.currentLoaded ? "No events scheduled" : "Loading schedule…"))
+                ? root.currentHeadline
+                : (root.currentFailed ? (root.onOne ? "Couldn't reach ONE" : "Couldn't reach ESPN") : (root.currentLoaded ? "No events scheduled" : "Loading schedule…"))
               color: root.barForeground
               font.family: root.fontFamily
               font.pixelSize: Style.font.heading
@@ -668,13 +813,15 @@ Panel {
             text: !root.current ? ""
               : Model.glyphs.date + "  " + (root.onBoxing
                 ? Qt.formatDate(Model.cardDate(root.current), "ddd d MMM")
-                : root.formatDay(root.current.mainCardMs) + " · " + root.formatTime(root.current.mainCardMs))
+                : (root.onOne
+                  ? root.formatDay(root.current.startMs) + " · " + root.formatTime(root.current.startMs)
+                  : root.formatDay(root.current.mainCardMs) + " · " + root.formatTime(root.current.mainCardMs)))
             color: root.barForeground
           }
 
           InfoLine {
             text: !root.current ? ""
-              : (root.onBoxing ? root.current.location
+              : (root.onBoxing || root.onOne ? root.current.location
                 : [root.current.venue, root.current.location].filter(function(p) { return p !== "" }).join(" · "))
           }
 
@@ -696,7 +843,8 @@ Panel {
             id: statusLabel
             textFormat: Text.PlainText
             anchors.centerIn: parent
-            text: (root.onBoxing ? Model.boxingStatus(root.card, root.now) : Model.statusText(root.event, root.now)).toUpperCase()
+            text: (root.onBoxing ? Model.boxingStatus(root.card, root.now)
+              : (root.onOne ? Model.oneStatus(root.oneEvent, root.now) : Model.statusText(root.event, root.now))).toUpperCase()
             color: root.currentLive ? root.live : root.barForeground
             font.family: root.fontFamily
             font.pixelSize: Style.font.bodySmall
@@ -740,6 +888,12 @@ Panel {
             visible: text !== ""
             text: root.onBoxing
               ? (root.card ? "" : (root.boxingFailed ? "ESPN's boxing schedule didn't load. Press r to try again." : (root.boxingLoaded ? root.boxingEmptyText() : "")))
+              : root.onOne
+                ? (!root.oneEvent
+                  ? (root.oneFailed ? "ONE's site didn't answer. Press r to try again." : (root.oneLoaded ? root.oneEmptyText() : ""))
+                  : (root.oneBouts === null
+                    ? (root.oneEntry && root.oneEntry.failed ? "The fight card didn't load. Press r to try again." : "Loading the fight card…")
+                    : (root.oneBouts.length === 0 ? "The fight card hasn't been announced yet." : "")))
               : (!root.event
                 ? (root.failed ? "ESPN didn't answer. Press r to try again." : (root.loaded ? "ESPN has no upcoming UFC events listed." : ""))
                 : (root.event.fightCount === 0 ? "The fight card hasn't been announced yet." : ""))
@@ -748,28 +902,33 @@ Panel {
             font.pixelSize: Style.font.body
           }
 
+          // Boxing and ONE share a plain list of bouts, main event first.
           Column {
+            readonly property var bouts: root.onBoxing ? (root.card ? root.card.fights : [])
+              : (root.onOne && root.oneBouts ? root.oneBouts : [])
             width: cardColumn.width
             spacing: 0
-            visible: root.onBoxing && root.card !== null
+            visible: bouts.length > 0
 
             PanelSectionHeader {
               width: parent.width
-              text: "FIGHT CARD"
+              text: root.onOne && root.oneEvent
+                ? "FIGHT CARD · " + Qt.formatDate(new Date(root.oneEvent.startMs), "ddd").toUpperCase() + " " + root.formatTime(root.oneEvent.startMs)
+                : "FIGHT CARD"
               foreground: root.barForeground
               fontFamily: root.fontFamily
               bottomPadding: Style.space(2)
             }
 
             Repeater {
-              model: root.onBoxing && root.card ? root.card.fights : []
+              model: parent.bouts
 
               BoutRow {}
             }
           }
 
           Repeater {
-            model: !root.onBoxing && root.event ? root.event.segments : []
+            model: !root.onBoxing && !root.onOne && root.event ? root.event.segments : []
 
             Column {
               id: segmentColumn
@@ -812,9 +971,9 @@ Panel {
           anchors.rightMargin: Style.space(8)
           anchors.verticalCenter: parent.verticalCenter
           elide: Text.ElideRight
-          text: root.currentFetchedAt > 0
-            ? (root.currentFailed ? "Offline · " : "") + "ESPN · updated " + root.formatTime(root.currentFetchedAt)
-            : "ESPN"
+          text: (root.currentFailed && root.currentFetchedAt > 0 ? "Offline · " : "")
+            + (root.onOne ? "onefc.com" : "ESPN")
+            + (root.currentFetchedAt > 0 ? " · updated " + root.formatTime(root.currentFetchedAt) : "")
           color: root.dim
           font.family: root.fontFamily
           font.pixelSize: Style.font.caption
@@ -831,13 +990,13 @@ Panel {
             tooltipText: "Refresh (r)"
             foreground: root.barForeground
             fontFamily: root.fontFamily
-            enabled: !fetchProc.running && !boxingProc.running
+            enabled: !fetchProc.running && !boxingProc.running && !oneProc.running
             onClicked: root.refresh()
           }
 
           PanelActionButton {
             iconText: Model.glyphs.open
-            tooltipText: "Open on ESPN (Enter)"
+            tooltipText: (root.onOne ? "Open on onefc.com" : "Open on ESPN") + " (Enter)"
             foreground: root.barForeground
             fontFamily: root.fontFamily
             enabled: root.current !== null
