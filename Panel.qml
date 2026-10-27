@@ -44,6 +44,7 @@ Panel {
   property var konami: []
   property bool arcadeOn: false
   property real arcadeHiScore: 0
+  property bool arcadeMuted: false
 
   readonly property var schedule: Model.upcoming(events, now)
   readonly property var nextEvent: schedule.length > 0 ? schedule[0] : null
@@ -544,6 +545,7 @@ Panel {
           item.foreground = root.barForeground
           item.dim = root.dim
           item.hiScore = root.arcadeHiScore
+          item.muted = root.arcadeMuted
           item.forceActiveFocus()
           // Again once the key that typed the code has finished dispatching.
           Qt.callLater(function() { if (arcadeLoader.item) arcadeLoader.item.forceActiveFocus() })
@@ -554,6 +556,7 @@ Panel {
         target: arcadeLoader.item
         function onExitRequested() { root.closeArcade() }
         function onHiScoreReached(score) { root.arcadeHiScore = score }
+        function onMutedToggled(muted) { root.arcadeMuted = muted }
       }
 
       // A hidden window leaves its items "visible", so the game clock stops

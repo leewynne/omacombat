@@ -129,6 +129,10 @@ by the QML and the node tests. `tests/fixtures/scoreboard.json` is a trimmed
 real ESPN UFC response and `tests/fixtures/boxing.json` a real copy of the
 boxing schedule story.
 
+The game's sound effects in `sounds/` are synthesised by `node tools/sfx.js`.
+They play through Qt Multimedia when it's installed, or PipeWire's `pw-play`
+when it isn't.
+
 ## License
 
 MIT
