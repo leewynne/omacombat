@@ -43,6 +43,10 @@ BarWidget {
     fights.step(delta)
   }
 
+  function openArcade() {
+    if (fights) fights.openArcade()
+  }
+
   function openSport(name) {
     if (fights) fights.openSport(name)
   }
@@ -99,6 +103,7 @@ BarWidget {
     function previous(): void { root.step(-1) }
     function ufc(): void { root.openSport("ufc") }
     function boxing(): void { root.openSport("boxing") }
+    function insertCoin(): void { root.openArcade() }
   }
 
   WidgetButton {

@@ -4,6 +4,7 @@ import Quickshell.Io
 import qs.Commons
 import qs.Ui
 import "Model.js" as Model
+import "Arcade.js" as Arcade
 
 // Fetches the UFC and boxing schedules from ESPN and shows one fight card at
 // a time. UFC is the default; the switch at the top (or u/b) changes sport.
@@ -38,6 +39,11 @@ Panel {
   property real boxingFetchedAt: 0
   property int boxingIndex: 0
   property int boxingRetries: 0
+
+  // ↑ ↑ ↓ ↓ ← → ← → B A opens Yie Ar Kung-Fu in place of the fight card.
+  property var konami: []
+  property bool arcadeOn: false
+  property real arcadeHiScore: 0
 
   readonly property var schedule: Model.upcoming(events, now)
   readonly property var nextEvent: schedule.length > 0 ? schedule[0] : null
@@ -77,6 +83,8 @@ Panel {
     index = 0
     boxingIndex = 0
     sport = "ufc"
+    konami = []
+    arcadeOn = false
     now = Date.now()
     cardScroll.contentY = 0
     root.controller.show()
@@ -98,7 +106,26 @@ Panel {
   }
 
   function close() {
+    arcadeOn = false
     root.controller.hide()
+  }
+
+  function konamiKey(token) {
+    var r = Arcade.konamiStep(konami, token)
+    konami = r.buffer
+    if (r.matched) openArcade()
+  }
+
+  function openArcade() {
+    if (!root.opened) open()
+    konami = []
+    arcadeOn = true
+  }
+
+  function closeArcade() {
+    arcadeOn = false
+    cardScroll.contentY = 0
+    keyCatcher.forceActiveFocus()
   }
 
   function toggle() {
@@ -477,28 +504,70 @@ Panel {
     bar: root.bar
     open: root.opened
     centerOnBar: false
-    focusTarget: keyCatcher
+    // Opening focuses this a beat later, so it must already be the arcade
+    // when the insertCoin IPC opens straight into it.
+    focusTarget: root.arcadeOn && arcadeLoader.item ? arcadeLoader.item : keyCatcher
     contentWidth: panel.fittedContentWidth(Style.space(460))
-    contentHeight: panel.fittedContentHeight(header.implicitHeight + cardColumn.implicitHeight + footer.implicitHeight + Style.space(24), Style.space(680))
+    contentHeight: root.arcadeOn
+      ? panel.fittedContentHeight(arcadeLoader.item ? arcadeLoader.item.implicitHeight : Style.space(440), Style.space(680))
+      : panel.fittedContentHeight(header.implicitHeight + cardColumn.implicitHeight + footer.implicitHeight + Style.space(24), Style.space(680))
 
     PanelKeyCatcher {
       id: keyCatcher
       anchors.fill: parent
+      // The arcade takes every key, releases included, while it's up.
+      blocked: root.arcadeOn
       onCloseRequested: root.close()
       onTabRequested: function(direction) { root.switchPanel(direction) }
       onMoveRequested: function(dx, dy) {
         if (dx !== 0) root.step(dx)
         else root.scroll(dy)
+        root.konamiKey(dx < 0 ? "left" : (dx > 0 ? "right" : (dy < 0 ? "up" : "down")))
       }
       onActivateRequested: root.openEvent()
       onTextKey: function(t) {
         if (t === "r") root.refresh()
         else if (t === "u") root.showSport("ufc")
         else if (t === "b") root.showSport("boxing")
+        root.konamiKey(t.toLowerCase())
+      }
+
+      Loader {
+        id: arcadeLoader
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: parent.top
+        active: root.arcadeOn
+        source: Qt.resolvedUrl("Arcade.qml")
+        onLoaded: {
+          item.fontFamily = root.fontFamily
+          item.foreground = root.barForeground
+          item.dim = root.dim
+          item.hiScore = root.arcadeHiScore
+          item.forceActiveFocus()
+          // Again once the key that typed the code has finished dispatching.
+          Qt.callLater(function() { if (arcadeLoader.item) arcadeLoader.item.forceActiveFocus() })
+        }
+      }
+
+      Connections {
+        target: arcadeLoader.item
+        function onExitRequested() { root.closeArcade() }
+        function onHiScoreReached(score) { root.arcadeHiScore = score }
+      }
+
+      // A hidden window leaves its items "visible", so the game clock stops
+      // on the panel's own state, whichever way it was closed.
+      Binding {
+        target: arcadeLoader.item
+        property: "running"
+        value: root.opened
+        when: arcadeLoader.item !== null
       }
 
       Column {
         id: header
+        visible: !root.arcadeOn
         anchors.top: parent.top
         anchors.left: parent.left
         anchors.right: parent.right
@@ -640,6 +709,7 @@ Panel {
 
       Flickable {
         id: cardScroll
+        visible: !root.arcadeOn
         anchors.top: header.bottom
         anchors.bottom: footer.top
         anchors.left: parent.left
@@ -724,6 +794,7 @@ Panel {
 
       Item {
         id: footer
+        visible: !root.arcadeOn
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: parent.bottom

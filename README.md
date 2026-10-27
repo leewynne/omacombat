@@ -19,6 +19,8 @@ fights coming up.
 - **Boxing**: a switch at the top of the popup (or `b`) lists the big boxing
   fights coming up, with the date, city, broadcaster, rounds and the titles on
   the line for every bout on the card. UFC is always where it opens.
+- **A secret**, for anyone who spent 1985 in an arcade: the popup knows a
+  certain famous code.
 
 ## Install
 
@@ -104,6 +106,10 @@ UFC is a registered trademark of Zuffa, LLC. This plugin is a fan project and
 is not affiliated with, endorsed or sponsored by the UFC, Zuffa, TKO, ESPN or
 any boxing promoter or sanctioning body.
 
+Yie Ar Kung-Fu is Konami's. The tribute hidden in this plugin uses original
+art, rules and code, contains nothing from Konami's games, and is not
+affiliated with or endorsed by Konami.
+
 ## Remove
 
 ```bash
@@ -118,9 +124,10 @@ This removes the plugin folder and its bar entry. It stores nothing else.
 ./tests/run
 ```
 
-The model (`Model.js`) is plain JavaScript shared by the QML and the node
-tests. `tests/fixtures/scoreboard.json` is a trimmed real ESPN UFC response and
-`tests/fixtures/boxing.json` a real copy of the boxing schedule story.
+The model (`Model.js`) and the game (`Arcade.js`) are plain JavaScript shared
+by the QML and the node tests. `tests/fixtures/scoreboard.json` is a trimmed
+real ESPN UFC response and `tests/fixtures/boxing.json` a real copy of the
+boxing schedule story.
 
 ## License
 
