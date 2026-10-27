@@ -5,7 +5,7 @@
   "version": "2.0.0",
   "author": "leewynne",
   "license": "MIT",
-  "description": "Upcoming UFC and MMA fight cards in your bar, with ONE Championship (ONE FC) and the big boxing fights a click away: a countdown to the next UFC event and a popup that steps through every card, with records and live results. Formerly Next UFC.",
+  "description": "Upcoming UFC and MMA fight cards in your bar, with ONE Championship (ONE FC), the PFL and the big boxing fights a click away: a countdown to the next UFC event and a popup that steps through every card, with records and live results. Formerly Next UFC.",
   "kinds": [
     "bar-widget"
   ],
@@ -14,13 +14,15 @@
   },
   "barWidget": {
     "displayName": "OmaCombat",
-    "description": "Countdown to the next UFC event, with the full fight card, arrows to browse the events after it, and tabs for ONE Championship and the big boxing fights coming up.",
+    "description": "Countdown to the next UFC event, with the full fight card, arrows to browse the events after it, and tabs for ONE Championship, the PFL and the big boxing fights coming up.",
     "category": "Info",
     "aliases": [
       "ufc",
       "mma",
       "one",
       "onefc",
+      "pfl",
+      "bellator",
       "boxing",
       "muay-thai",
       "kickboxing",
@@ -34,7 +36,8 @@
       "clock": "locale",
       "refreshMinutes": 30,
       "boxing": "big",
-      "one": "all"
+      "one": "all",
+      "pfl": true
     },
     "schema": [
       {
@@ -71,6 +74,13 @@
         ],
         "defaultValue": "all",
         "description": "Which ONE events the panel's ONE tab lists. all: every event. big: skips the weekly ONE Friday Fights. off: hide the tab."
+      },
+      {
+        "key": "pfl",
+        "type": "boolean",
+        "label": "PFL",
+        "defaultValue": true,
+        "description": "Show the panel's PFL tab, with every PFL event on ESPN's schedule."
       },
       {
         "key": "boxing",

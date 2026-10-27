@@ -158,7 +158,7 @@ test("sports and the ONE setting stay in step with the manifest", () => {
   const one = manifest.barWidget.schema.find(s => s.key === "one")
   assert.deepEqual(one.options, Model.oneScopes)
   assert.equal(one.defaultValue, manifest.barWidget.defaults.one)
-  assert.deepEqual(Model.sports, ["ufc", "one", "boxing"])
+  assert.deepEqual(Model.sports, ["ufc", "one", "pfl", "boxing"])
   assert.equal(Model.sport("one"), "one")
   assert.equal(Model.oneScope("big"), "big")
   assert.equal(Model.oneScope(undefined), "all")

@@ -4,9 +4,9 @@ import qs.Commons
 import qs.Ui
 import "Model.js" as Model
 
-// Next UFC event in the bar. Left click opens the fight card (with boxing a
-// switch away), middle click refreshes, right click opens the next UFC event
-// on ESPN.
+// Next UFC event in the bar. Left click opens the fight card (with ONE, PFL
+// and boxing a switch away), middle click refreshes, right click opens the
+// next UFC event on ESPN.
 BarWidget {
   id: root
   moduleName: "leewynne.omacombat"
@@ -103,6 +103,7 @@ BarWidget {
     function previous(): void { root.step(-1) }
     function ufc(): void { root.openSport("ufc") }
     function one(): void { root.openSport("one") }
+    function pfl(): void { root.openSport("pfl") }
     function boxing(): void { root.openSport("boxing") }
     function insertCoin(): void { root.openArcade() }
   }

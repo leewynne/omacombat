@@ -1,8 +1,11 @@
-// ESPN's public UFC scoreboard and boxing schedule, shaped into what the bar
-// pill and the fight-card panel need. Pure functions only: the QML owns
-// fetching and timers, so everything here runs under node for the tests.
+// ESPN's public UFC and PFL scoreboards and its boxing schedule, and ONE
+// Championship's own pages, shaped into what the bar pill and the fight-card
+// panel need. Pure functions only: the QML owns fetching and timers, so
+// everything here runs under node for the tests.
 
-var scoreboardBase = "https://site.api.espn.com/apis/site/v2/sports/mma/ufc/scoreboard"
+// The UFC and PFL scoreboards share one shape, so one parser reads both.
+var scoreboardRoot = "https://site.api.espn.com/apis/site/v2/sports/mma/"
+var leagues = ["ufc", "pfl"]
 
 // ESPN has no boxing scoreboard. Its long-running "Boxing schedule" story is
 // the source instead, read through the news API so it arrives as JSON.
@@ -41,9 +44,9 @@ function utcDateKey(ms) {
 
 // The window starts a day back so an event running past midnight UTC stays
 // listed until ESPN marks it final.
-function scoreboardUrl(nowMs, lookaheadDays) {
+function scoreboardUrl(nowMs, lookaheadDays, league) {
   var days = Math.max(7, Math.min(365, parseInt(lookaheadDays, 10) || 180))
-  return scoreboardBase + "?limit=100&dates=" + utcDateKey(nowMs - dayMs) + "-" + utcDateKey(nowMs + days * dayMs)
+  return scoreboardRoot + espnLeague(league) + "/scoreboard?limit=100&dates=" + utcDateKey(nowMs - dayMs) + "-" + utcDateKey(nowMs + days * dayMs)
 }
 
 // ESPN timestamps look like 2026-11-01T00:00Z, without seconds, which not
@@ -52,6 +55,10 @@ function parseTime(value) {
   var m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?(?:\.\d+)?Z$/.exec(String(value || ""))
   if (!m) return NaN
   return Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +(m[6] || 0))
+}
+
+function espnLeague(value) {
+  return leagues.indexOf(value) >= 0 ? value : "ufc"
 }
 
 // "UFC 334: Gane vs. Hokit" -> brand "UFC 334", headline "Gane vs. Hokit".
@@ -163,16 +170,16 @@ function broadcasts(comps) {
   return names
 }
 
-function eventUrl(ev) {
+function eventUrl(ev, league) {
   var links = Array.isArray(ev.links) ? ev.links : []
   for (var i = 0; i < links.length; i++) {
     var rel = Array.isArray(links[i].rel) ? links[i].rel : []
     if (rel.indexOf("event") >= 0 && /^https:\/\//.test(String(links[i].href || ""))) return String(links[i].href)
   }
-  return "https://www.espn.com/mma/fightcenter/_/id/" + encodeURIComponent(String(ev.id || "")) + "/league/ufc"
+  return "https://www.espn.com/mma/fightcenter/_/id/" + encodeURIComponent(String(ev.id || "")) + "/league/" + league
 }
 
-function parseEvent(ev) {
+function parseEvent(ev, league) {
   var comps = Array.isArray(ev.competitions) ? ev.competitions : []
   var names = splitName(ev.name)
   var fights = comps.map(parseFight)
@@ -190,10 +197,11 @@ function parseEvent(ev) {
   })
   var mainCardMs = segments.length > 0 && !isNaN(segments[0].startMs) ? segments[0].startMs : startMs
 
+  var promotion = league.toUpperCase()
   return {
     id: String(ev.id || ""),
-    name: String(ev.name || "UFC"),
-    brand: names.brand || "UFC",
+    name: String(ev.name || promotion),
+    brand: names.brand || promotion,
     headline: names.headline,
     startMs: startMs,
     mainCardMs: mainCardMs,
@@ -202,7 +210,7 @@ function parseEvent(ev) {
     venue: venue.fullName ? String(venue.fullName) : "",
     location: place.join(", "),
     broadcasts: broadcasts(comps),
-    url: eventUrl(ev),
+    url: eventUrl(ev, league),
     segments: segments,
     fightCount: fights.length
   }
@@ -210,7 +218,7 @@ function parseEvent(ev) {
 
 // Returns null (not []) when the response is unusable, so callers can keep
 // the last good schedule instead of blanking it.
-function parseScoreboard(raw) {
+function parseScoreboard(raw, league) {
   var data
   try {
     data = typeof raw === "string" ? JSON.parse(raw) : raw
@@ -218,8 +226,9 @@ function parseScoreboard(raw) {
     return null
   }
   if (!data || !Array.isArray(data.events)) return null
+  var slug = espnLeague(league)
   return data.events
-    .map(parseEvent)
+    .map(function(ev) { return parseEvent(ev, slug) })
     .filter(function(e) { return !e.completed && e.state !== "post" && !isNaN(e.startMs) })
     .sort(function(a, b) { return a.startMs - b.startMs })
 }
@@ -312,7 +321,7 @@ function cornerDetail(f) {
 
 // ---------- boxing ----------
 
-var sports = ["ufc", "one", "boxing"]
+var sports = ["ufc", "one", "pfl", "boxing"]
 var boxingScopes = ["big", "titles", "all", "off"]
 var monthIndex = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 }
 var monthAnchors = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"]
@@ -345,6 +354,12 @@ function plainText(html) {
 
 function sport(value) {
   return sports.indexOf(value) >= 0 ? value : "ufc"
+}
+
+// On/off settings arrive as booleans, or as "false" from `omarchy bar set`
+// without --json.
+function switchedOn(value) {
+  return value !== false && value !== "false"
 }
 
 function boxingScope(value) {
@@ -794,6 +809,8 @@ if (typeof module !== "undefined") {
     glyphs: glyphs,
     labelStyles: labelStyles,
     staleAfterMs: staleAfterMs,
+    leagues: leagues,
+    espnLeague: espnLeague,
     scoreboardUrl: scoreboardUrl,
     parseTime: parseTime,
     splitName: splitName,
@@ -814,6 +831,7 @@ if (typeof module !== "undefined") {
     decodeEntities: decodeEntities,
     plainText: plainText,
     sport: sport,
+    switchedOn: switchedOn,
     boxingScope: boxingScope,
     nearestDate: nearestDate,
     parseCardHeading: parseCardHeading,
